@@ -1,0 +1,129 @@
+// M1 (Review Copilot) 資料模型骨架。
+// M2 需要的語意檢索欄位（policy/case embedding）之後再以 migration 補上 pgvector 欄位，
+// 現階段先讓 M1 的閉環（Agent 分類 -> 人工處置 -> 稽核紀錄）跑得通。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  REVIEWER
+  MANAGER
+  POLICY_OWNER
+  IT_ADMIN
+}
+
+enum CaseVerdict {
+  NORMAL
+  EXCEPTION
+  MISSING
+  HUMAN
+}
+
+enum ReviewAction {
+  ADOPT
+  OVERRIDE
+  REQUEST_DOCUMENT
+  ESCALATE_TO_HUMAN
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  role      UserRole
+  createdAt DateTime @default(now())
+
+  reviewDecisions ReviewDecision[]
+  auditLogs       AuditLog[]
+}
+
+model ExpenseCase {
+  id          String   @id @default(cuid())
+  externalId  String   @unique // 對應既有費用系統的案件編號
+  submitterId String
+  amount      Decimal  @db.Decimal(14, 2)
+  currency    String   @default("TWD")
+  category    String
+  submittedAt DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  attachments      Attachment[]
+  agentSuggestions AgentSuggestion[]
+  reviewDecisions  ReviewDecision[]
+  auditLogs        AuditLog[]
+}
+
+model Attachment {
+  id           String      @id @default(cuid())
+  caseId       String
+  case         ExpenseCase @relation(fields: [caseId], references: [id])
+  fileName     String
+  contentType  String
+  storageKey   String // S3/MinIO object key，不在 DB 內存二進位內容
+  sizeBytes    Int
+  uploadedAt   DateTime    @default(now())
+}
+
+model Policy {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  title       String
+  description String
+  // 條件式規則（例：金額上限、類別限制），先用 JSONB 保留彈性，
+  // 之後可依 Policy Owner 的實際規則語言再收斂 schema。
+  conditions  Json
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  agentSuggestions AgentSuggestion[]
+}
+
+model AgentSuggestion {
+  id         String      @id @default(cuid())
+  caseId     String
+  case       ExpenseCase @relation(fields: [caseId], references: [id])
+  policyId   String?
+  policy     Policy?     @relation(fields: [policyId], references: [id])
+  verdict    CaseVerdict
+  confidence Float
+  reasoning  String
+  // Agent 引用的證據來源（單據欄位、Policy 條款、比對結果等）
+  evidence   Json
+  modelName  String
+  createdAt  DateTime    @default(now())
+
+  reviewDecisions ReviewDecision[]
+}
+
+model ReviewDecision {
+  id           String           @id @default(cuid())
+  caseId       String
+  case         ExpenseCase      @relation(fields: [caseId], references: [id])
+  suggestionId String
+  suggestion   AgentSuggestion  @relation(fields: [suggestionId], references: [id])
+  reviewerId   String
+  reviewer     User             @relation(fields: [reviewerId], references: [id])
+  action       ReviewAction
+  overrideReason String?
+  decidedAt    DateTime         @default(now())
+}
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  caseId     String?
+  case       ExpenseCase? @relation(fields: [caseId], references: [id])
+  actorId    String?
+  actor      User?       @relation(fields: [actorId], references: [id])
+  actorType  String // "AGENT" | "HUMAN" | "SYSTEM"
+  action     String
+  detail     Json
+  createdAt  DateTime    @default(now())
+}

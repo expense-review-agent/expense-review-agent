@@ -1,0 +1,39 @@
+schema: spec-driven
+
+context: |
+  Product: AI Review Layer for corporate expense reimbursement review.
+  Sits on top of an existing expense system (not a replacement); reads cases,
+  receipts/attachments, corporate policy, and authorization data.
+  Milestones: M1 Review Copilot (agent-assisted human review) -> M2 Risk
+  Intelligence (context-aware risk detection) -> M3 Autonomous Review
+  (policy-controlled automation with human oversight).
+  Every case decision must stay traceable: agent suggestion, human decision,
+  override reason, actor, and timestamp are all recorded in an audit log.
+
+  Tech stack:
+    Frontend: React + TypeScript + Vite, TanStack Query, Zod
+    Backend: Node.js + TypeScript, NestJS, Prisma ORM
+    Database: PostgreSQL (+ pgvector for M2 semantic retrieval)
+    Object storage: S3 (MinIO locally)
+    Queue: Redis + BullMQ (async agent execution, M3 retries/escalation)
+    Monorepo: pnpm workspaces — apps/web, apps/api, packages/shared
+
+  Conventions: Conventional Commits, ESLint + Prettier at the repo root
+  (do not add per-app lint/format configs), TypeScript strict mode
+  everywhere, shared types/schemas live in packages/shared.
+
+rules:
+  proposal:
+    - State which milestone (M1/M2/M3) and which user story from the PRD this change serves
+    - Call out any new audit-log fields or traceability implications
+  tasks:
+    - Break tasks so frontend, backend, and shared-package work can be reviewed independently
+
+operations:
+  apply:
+    guidance:
+      - Follow the existing NestJS module boundaries; do not bypass the shared Prisma schema
+      - Keep new enums/types in packages/shared so frontend and backend stay in sync
+  archive:
+    guidance:
+      - Summarize which milestone/user story this change closed before archiving
