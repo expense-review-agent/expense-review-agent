@@ -1,6 +1,23 @@
-// M1 (Review Copilot) 資料模型骨架。
-// M2 需要的語意檢索欄位（policy/case embedding）之後再以 migration 補上 pgvector 欄位，
-// 現階段先讓 M1 的閉環（Agent 分類 -> 人工處置 -> 稽核紀錄）跑得通。
+// =============================================================================
+// expense-review-agent — Prisma schema v3 (M1: Review Copilot)
+// 對應 M1-U1（Agent 初審 → 財務處置）與 M1-U2（主管稽核 / 治理留痕）
+// 已對齊 PM prototype ReviewCopilot_v0_3。
+//
+// v3 相對 v2 的變更：
+//   1. 規則拆兩層：RuleDefinition（系統型錄，走 i18n）／PolicyRule（組織設定，存原文）。
+//      後台可編輯的是 PolicyRule；同一 definition 可有多條 instance（依類別分設上限）。
+//   2. RuleOutcome 對齊 prototype 的五種結果：PASS / FAIL / GATED / ABSTAIN / PENDING_HUMAN。
+//   3. 修正 v2 bug：guardrail 檢查無規則代碼（prototype 的「單據適格性」code = "—"），
+//      改以 checkKey 作為 run 內唯一鍵，@@unique([runId, ruleCode]) 會撞鍵。
+//   4. ReviewerAction 依 prototype 修正：ACCEPT 對 EXCEPTION / HUMAN 合法，
+//      語意為「同意需人工判斷並轉呈主管」→ 新增 ConsistencyFlag.ESCALATED。
+//   5. 新增 triggerStage（prototype PipelineRail 的觸發階段）。
+//
+// i18n 邊界（依決議）：
+//   - 系統訊息、狀態、規則判定理由 → messageKey + params，DB 不存中文
+//   - 組織自訂的 Policy 條文（§4.2 住宿每晚上限 NT$4,000）→ 存原文，不 key 化
+//   - 人工填寫的覆寫／稽核理由 → 自由文字，原樣保存
+// =============================================================================
 
 generator client {
   provider = "prisma-client-js"
@@ -11,119 +28,973 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// =============================================================================
+// Enums
+// =============================================================================
+
 enum UserRole {
-  REVIEWER
-  MANAGER
-  POLICY_OWNER
-  IT_ADMIN
+  REVIEWER // 財務初審人員
+  SUPERVISOR // 財務主管 / 內控
+  ADMIN
 }
 
-enum CaseVerdict {
+/// UI 文案：DRAFT=草稿 / QUEUED=待審 / AWAITING_INFO=待補件 /
+///          DISPOSED=已處置 / REVIEW_CLOSED=已核可（初審結案）
+/// 不設「已不通過」終態：最終核准與否屬既有系統職責。
+enum CaseStatus {
+  DRAFT
+  QUEUED
+  AWAITING_INFO
+  DISPOSED
+  REVIEW_CLOSED
+}
+
+enum DocumentKind {
+  RECEIPT
+  EXPENSE_FORM
+  POLICY
+  ATTACHMENT
+}
+
+/// R4「必要附件齊備」比對用。附件隨申請表夾帶上傳。
+enum AttachmentType {
+  APPROVAL_RECORD // 核准紀錄 / 簽核單（R3）
+  CONTRACT // 合約（prototype 案 2004：大額須附合約）
+  PARTICIPANT_LIST
+  TRIP_ITINERARY
+  QUOTATION
+  OTHER
+}
+
+enum PolicyVersionStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum PolicyResolution {
+  EXACT // 依案件申請日命中生效區間
+  FALLBACK_BOOTSTRAP // 冷啟動 / 無適用區間，回退預設版本（UI 須提示）
+}
+
+enum RuleLayer {
+  MATCH // F4 一致性比對
+  RULE // F5 規則判定
+}
+
+/// prototype DepChip 的三值顯示由 layer + dependsOnConsistency 推導：
+///   layer = MATCH                            → 「比對」
+///   layer = RULE, dependsOnConsistency = true → 「依賴」
+///   layer = RULE, dependsOnConsistency = false→ 「獨立」
+/// 不另存欄位，避免兩處真相不一致。
+
+enum ExtractionSource {
+  STRUCTURED_FIXTURE // Phase 1：seed 的 JSON mock 資料
+  MANUAL_FORM // Phase 1：介面表單人工輸入
+  OCR // Phase 2
+}
+
+enum ReviewRunStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum Classification {
   NORMAL
   EXCEPTION
   MISSING
   HUMAN
 }
 
-enum ReviewAction {
-  ADOPT
-  OVERRIDE
-  REQUEST_DOCUMENT
-  ESCALATE_TO_HUMAN
+enum RecommendedAction {
+  APPROVE // 建議通過
+  REQUEST_INFO // 建議補件
+  MANUAL_REVIEW // 建議人工審核（EXCEPTION 與 HUMAN 皆對應此項）
+}
+
+enum ConfidenceLevel {
+  HIGH
+  MEDIUM
+  LOW
+  NONE
+}
+
+/// 案件被觸發（偏離正常路徑）的階段，供 prototype PipelineRail 呈現。
+enum TriggerStage {
+  UPLOAD
+  EXTRACTION
+  MATCHING
+  RULES
+  CLASSIFICATION
+}
+
+/// 規則判定結果，對齊 prototype 的五種顯示狀態。
+///   PASS          通過（綠）
+///   FAIL          未通過（紅）— 疑似類規則見 RuleDefinition.isSuspicionOnly
+///   GATED         暫不判定（灰）— 依賴比對且雙基準結論分歧，必附 gateReasonKey
+///   ABSTAIN       主動退讓（藍）— 規則不適用或超出 Agent 能力，必附 abstainReasonKey
+///   PENDING_HUMAN 待複查（灰）— 已標記交人工確認（如未匹配單據丟 R7 複查）
+enum RuleOutcome {
+  PASS
+  FAIL
+  GATED
+  ABSTAIN
+  PENDING_HUMAN
+}
+
+/// ABSTAIN 的細分原因。
+enum AbstainReason {
+  RULE_NOT_APPLICABLE // 條件不成立，規則不適用（國外 invoice 無統編）
+  BEYOND_CAPABILITY // 超出 Agent 能力或授權（不判稅務適格性、不判合法性）
+  LOW_CONFIDENCE // 關鍵欄位信心不足
+  UNSUPPORTED_CURRENCY // 非 TWD，本階段不做換算
+}
+
+/// 雙假設評估（B4）：依賴比對的規則在比對不一致時，以申報值與單據值各跑一次。
+///   BOTH_AGREE → 兩基準結論相同，照常輸出 PASS / FAIL（堵住漏判）
+///   DIVERGENT  → 兩基準結論不同，outcome = GATED，UI 並列兩種假設
+enum EvaluationBasis {
+  SINGLE
+  DECLARED_ONLY
+  RECEIPT_ONLY
+  BOTH_AGREE
+  DIVERGENT
+}
+
+enum Severity {
+  INFO
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum MatchScope {
+  LINE_FIELD // 逐欄比對
+  TOTAL_SUM // 多憑證加總 vs 申報總額（R10）
+  LINE_COUNT // 筆數比對
+  UNMATCHED_RECEIPT // 有單據無對應項目 → HUMAN，並交 R7 複查
+  MISSING_RECEIPT // 有項目無對應單據 → MISSING
+}
+
+enum MatchOutcome {
+  MATCHED
+  MISMATCHED
+  MISSING
+  UNMATCHED
+}
+
+/// 比對層總結，對應 prototype match.verdict 的「一致／部分／不一致」
+enum MatchVerdict {
+  CONSISTENT
+  PARTIAL
+  INCONSISTENT
+}
+
+/// Reviewer 處置動作（F7 / AC2），對齊 prototype 的三顆按鈕。
+///
+/// 合法動作矩陣（應用層驗證，前端據此渲染）：
+///   ┌───────────────┬──────────────────────────┬─────────────────────┐
+///   │ Agent 建議     │ ACCEPT 的 finalAction     │ 其他合法動作          │
+///   ├───────────────┼──────────────────────────┼─────────────────────┤
+///   │ APPROVE       │ APPROVE → DISPOSED       │ REQUEST_INFO /      │
+///   │ (NORMAL)      │                          │ MANUAL_JUDGEMENT    │
+///   │ REQUEST_INFO  │ REQUEST_INFO             │ MANUAL_JUDGEMENT    │
+///   │ (MISSING)     │ → AWAITING_INFO          │                     │
+///   │ MANUAL_REVIEW │ MANUAL_REVIEW → DISPOSED │ REQUEST_INFO /      │
+///   │ (EXCEPTION/   │ 轉呈主管，reviewer 不下結論 │ MANUAL_JUDGEMENT /  │
+///   │  HUMAN)       │                          │ HOLD                │
+///   └───────────────┴──────────────────────────┴─────────────────────┘
+/// MANUAL_JUDGEMENT 由 UI modal 指定 finalAction（通過／補件／人工審核）並必填理由。
+enum ReviewerAction {
+  ACCEPT // 採用 Agent 建議（含「轉人工／主管審核」）
+  REQUEST_INFO // 退回補件（直接回待審）
+  MANUAL_JUDGEMENT // 人工判斷（必填理由）
+  HOLD // 保留待處理，案件留在待審（prototype 尚未實作）
+}
+
+/// 一致性標記（M1-U2 徽章）。寫入 Disposition 時計算並固化，勿於 UI 端即時重算。
+///
+///   agentAction ≠ MANUAL_REVIEW 且 final = agentAction  → CONSISTENT
+///   agentAction ≠ MANUAL_REVIEW 且 final ≠ agentAction  → OVERRIDDEN     （理由必填）
+///   agentAction = MANUAL_REVIEW 且 final ≠ MANUAL_REVIEW → HUMAN_ASSUMED  （理由必填）
+///   agentAction = MANUAL_REVIEW 且 final = MANUAL_REVIEW → ESCALATED
+///   應有理由而缺失                                        → REASON_MISSING
+enum ConsistencyFlag {
+  CONSISTENT // 綠：最終結論 = Agent 建議
+  OVERRIDDEN // 紫：Agent 有明確結論且被推翻
+  HUMAN_ASSUMED // 藍：Agent 退讓未下結論，由人承擔判斷
+  ESCALATED // 灰：雙方皆未下結論，轉呈主管
+  REASON_MISSING // 紅：應有理由卻缺失，不得靜默通過稽核
+}
+
+/// 主管稽核動作，對齊 prototype 並補上 M1-U2 AC6 的複核標記。
+enum SupervisorAction {
+  APPROVE // 核可結案
+  RETURN_TO_REVIEWER // 退回重審（送回財務初審）
+  MARK_REVIEWED // 已複核（AC6）
+  FLAG_CONCERN // 有疑慮 + 意見（AC6，供 AC10 篩選）
+  ANNOTATE // 加註稽核意見，不改變狀態
+}
+
+enum AuditEventType {
+  CASE_CREATED
+  DOCUMENT_UPLOADED
+  DOCUMENT_REMOVED
+  CASE_SUBMITTED
+  POLICY_VERSION_LOCKED
+  RUN_STARTED
+  RUN_COMPLETED
+  RUN_FAILED
+  REVIEWER_DISPOSITION
+  SUPERVISOR_REVIEW
+  CASE_STATUS_CHANGED
+  AUDIT_EXPORTED
+}
+
+// =============================================================================
+// 組織 / 使用者
+// MVP 單一組織；不做登入，以「切換身分」指定 actor 供 M1-U2 三軌演示。
+// =============================================================================
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users           User[]
+  companyTaxIds   CompanyTaxId[]
+  policyDocuments PolicyDocument[]
+  cases           ExpenseCase[]
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  role      UserRole
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  displayName    String
+  email          String
+  role           UserRole     @default(REVIEWER)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+
+  uploadedFiles     StoredFile[]
+  dispositions      Disposition[]
+  supervisorReviews SupervisorReview[]
+  auditEvents       AuditEvent[]
+  auditExports      AuditExport[]
+
+  @@unique([organizationId, email])
+  @@index([organizationId, role])
+}
+
+/// 公司統編白名單（R9 比對基準）。單一統編為 n=1 的特例。
+model CompanyTaxId {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  taxId          String // 8 碼
+  legalName      String
+  isPrimary      Boolean      @default(false)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+
+  @@unique([organizationId, taxId])
+}
+
+// =============================================================================
+// 檔案儲存（S3 / MinIO）
+// =============================================================================
+
+model StoredFile {
+  id           String   @id @default(cuid())
+  storageKey   String   @unique
+  originalName String
+  mimeType     String
+  byteSize     Int
+  sha256       String
+  pageCount    Int?
+  uploadedById String?
+  uploadedBy   User?    @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now())
+
+  caseDocuments  CaseDocument[]
+  policyVersions PolicyVersion[]
+  auditExports   AuditExport[]
+
+  @@index([sha256])
+}
+
+// =============================================================================
+// 規則型錄（系統層）
+// 引擎支援哪些檢查、如何說話、參數長什麼樣——屬產品，隨引擎版本演進，走 i18n。
+// 組織不能編輯此表；組織編輯的是下面的 PolicyRule。
+// =============================================================================
+
+model RuleDefinition {
+  id   String @id @default(cuid())
+  code String @unique // "R1" ~ "R13"，或 guardrail 的 "GUARD_ELIGIBILITY"
+
+  /// 名稱與說明的 i18n key，例 "rule.R1.name"
+  nameKey String
+  descKey String?
+
+  layer RuleLayer
+  /// true = 依賴一致性比對結果（用金額等欄位），觸發雙假設評估
+  /// 獨立規則：R2 期限、R4 附件、R6 可報銷、R7 重複、R8 拆單、R9 統編
+  dependsOnConsistency Boolean @default(false)
+
+  /// true = 本規則只能標「疑似」，不得作為指控（R7 重複、R8 拆單）。
+  /// 屬產品層 guardrail，組織不可覆寫。UI 依此加註語氣。
+  isSuspicionOnly Boolean @default(false)
+
+  /// true = 非 Policy 條文，而是產品內建的安全邊界檢查
+  /// （prototype 案 2008「單據適格性」，無條文可引用）
+  isGuardrail Boolean @default(false)
+
+  /// params 的 Zod schema 識別碼，供後台表單動態渲染與驗證
+  /// 例 "AmountLimitParams" / "DeadlineParams" / "RequiredAttachmentParams"
+  paramsSchemaKey String?
+
+  /// 判定訊息的 i18n key 前綴，實際 key = "{prefix}.{outcome}"
+  /// 例 "rule.R1" → "rule.R1.FAIL" 搭配 params { limit, actual, excess }
+  messageKeyPrefix String
+
+  defaultSeverity Severity @default(MEDIUM)
+  tier            Int      @default(0) // 0 = Tier 0 必達, 1 = Tier 1
+  engineMinVersion String? // 需要的最低引擎版本
+  isActive        Boolean  @default(true)
+
+  policyRules PolicyRule[]
+  ruleResults RuleResult[]
+}
+
+// =============================================================================
+// Policy（組織層、版本化、具生效區間）
+// =============================================================================
+
+model PolicyDocument {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  description    String?
+  createdAt      DateTime     @default(now())
+
+  versions PolicyVersion[]
+
+  @@unique([organizationId, name])
+}
+
+model PolicyVersion {
+  id               String              @id @default(cuid())
+  policyDocumentId String
+  policyDocument   PolicyDocument      @relation(fields: [policyDocumentId], references: [id])
+  version          String // "v0.1"
+  status           PolicyVersionStatus @default(DRAFT)
+
+  /// 生效區間。案件依「申請日」落在哪個區間決定適用版本，
+  /// 確保新舊規則交替時不以新版回溯評斷舊案（M1-U2 G4）。
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  /// 冷啟動預設版本：找不到適用區間時回退，避免建立案件時報錯。
+  isBootstrap Boolean @default(false)
+
+  sourceFileId String?
+  sourceFile   StoredFile? @relation(fields: [sourceFileId], references: [id])
+  /// 規則集內容雜湊，證明判定當下的設定未被竄改
+  contentHash  String
+
   createdAt DateTime @default(now())
 
-  reviewDecisions ReviewDecision[]
-  auditLogs       AuditLog[]
+  rules       PolicyRule[]
+  cases       ExpenseCase[]
+  reviewRuns  ReviewRun[]
+  auditEvents AuditEvent[]
+
+  @@unique([policyDocumentId, version])
+  @@index([status, effectiveFrom])
 }
+
+/// 組織對某條 RuleDefinition 的設定實例。後台編輯的就是這張表。
+/// 同一 definition 可有多筆（住宿一條、交通一條），以 ruleKey 區分，
+/// 這是組織變大後細緻化規則的擴充路徑。
+///
+/// params 範例（形狀由 RuleDefinition.paramsSchemaKey 對應的 Zod 約束）：
+///   R1 { "category": "LODGING", "perNight": 4000, "currency": "TWD" }
+///   R2 { "maxDaysAfterExpense": 60 }
+///   R3 { "approvalThreshold": 100000, "currency": "TWD" }
+///   R4 { "appliesWhen": { "amountGte": 50000 }, "required": ["CONTRACT"] }
+///   R6 { "allowedCategories": ["MEAL","LODGING","TRANSPORT","SUPPLIES"] }
+///   R7 { "matchOn": ["docNo","amount","expenseDate"], "lookbackDays": 180 }
+///   R8 { "windowDays": 3, "sameVendor": true, "thresholdAmount": 10000 }
+model PolicyRule {
+  id              String        @id @default(cuid())
+  policyVersionId String
+  policyVersion   PolicyVersion @relation(fields: [policyVersionId], references: [id])
+
+  ruleDefinitionId String
+  ruleDefinition   RuleDefinition @relation(fields: [ruleDefinitionId], references: [id])
+
+  /// 本版本內的唯一識別，例 "R1-lodging" / "R1-transport"
+  ruleKey String
+
+  /// 組織自訂的條文標示與原文——存原文，不 i18n。
+  /// prototype 顯示的「§4.2 住宿每晚上限 NT$4,000」即此二欄。
+  clauseRef  String? // "§4.2"
+  clauseText String
+  /// 條文在 Policy 原始檔中的定位 { page, section, bbox }
+  clauseAnchor Json?
+
+  params Json @default("{}")
+  /// 覆寫 definition 的預設嚴重度；null = 沿用預設
+  severityOverride Severity?
+  isActive         Boolean   @default(true)
+  orderIndex       Int       @default(0)
+
+  ruleResults RuleResult[]
+  evidences   Evidence[]
+
+  @@unique([policyVersionId, ruleKey])
+  @@index([policyVersionId, isActive])
+}
+
+// =============================================================================
+// 案件
+// =============================================================================
 
 model ExpenseCase {
-  id          String   @id @default(cuid())
-  externalId  String   @unique // 對應既有費用系統的案件編號
-  submitterId String
-  amount      Decimal  @db.Decimal(14, 2)
-  currency    String   @default("TWD")
-  category    String
-  submittedAt DateTime
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  caseNumber     String // "EXP-2026-2001"
+  status         CaseStatus   @default(DRAFT)
 
-  attachments      Attachment[]
-  agentSuggestions AgentSuggestion[]
-  reviewDecisions  ReviewDecision[]
-  auditLogs        AuditLog[]
+  applicantName String
+  applicantCode String?
+
+  /// 申請日：Policy 版本解析的基準日
+  applicationDate DateTime? @db.Date
+
+  declaredTotal Decimal? @db.Decimal(14, 2)
+  currency      String   @default("TWD")
+  /// 非 TWD 不做換算，一律 abstain 轉 HUMAN（AC14）。匯率屬 M2 範圍。
+
+  /// 建立案件時鎖定的 Policy 版本。補件重跑沿用，換版須為明確動作並留痕。
+  policyVersionId String?
+  policyVersion   PolicyVersion? @relation(fields: [policyVersionId], references: [id])
+
+  currentRunId String?    @unique
+  currentRun   ReviewRun? @relation("CurrentRun", fields: [currentRunId], references: [id])
+
+  riskScore  Int?
+  roundCount Int @default(0)
+
+  submittedAt DateTime?
+  closedAt    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  documents         CaseDocument[]
+  lines             ExpenseLine[]
+  receipts          Receipt[]
+  reviewRuns        ReviewRun[]        @relation("CaseRuns")
+  dispositions      Disposition[]
+  supervisorReviews SupervisorReview[]
+  auditEvents       AuditEvent[]
+  auditExports      AuditExport[]
+  relatedEvidences  Evidence[]         @relation("EvidenceRelatedCase")
+
+  @@unique([organizationId, caseNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, status, riskScore])
 }
 
-model Attachment {
-  id           String      @id @default(cuid())
-  caseId       String
-  case         ExpenseCase @relation(fields: [caseId], references: [id])
-  fileName     String
-  contentType  String
-  storageKey   String // S3/MinIO object key，不在 DB 內存二進位內容
-  sizeBytes    Int
-  uploadedAt   DateTime    @default(now())
+model CaseDocument {
+  id             String          @id @default(cuid())
+  caseId         String
+  case           ExpenseCase     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  fileId         String
+  file           StoredFile      @relation(fields: [fileId], references: [id])
+  kind           DocumentKind
+  /// kind = ATTACHMENT 時標明類型，供 R4 比對必要附件清單
+  attachmentType AttachmentType?
+  /// 是否為合併檔（prototype 案 2010：一檔含 3 張單據）
+  isBundle       Boolean         @default(false)
+  round          Int             @default(1)
+  createdAt      DateTime        @default(now())
+
+  receipts Receipt[]
+
+  @@index([caseId, kind])
 }
 
-model Policy {
-  id          String   @id @default(cuid())
-  code        String   @unique
-  title       String
-  description String
-  // 條件式規則（例：金額上限、類別限制），先用 JSONB 保留彈性，
-  // 之後可依 Policy Owner 的實際規則語言再收斂 schema。
-  conditions  Json
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+model ExpenseLine {
+  id     String      @id @default(cuid())
+  caseId String
+  case   ExpenseCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  lineNo Int
 
-  agentSuggestions AgentSuggestion[]
+  docNo       String?
+  expenseDate DateTime? @db.Date
+  amount      Decimal   @db.Decimal(14, 2)
+  currency    String    @default("TWD")
+  vendor      String?
+  category    String?
+  description String?
+
+  /// R3 核准門檻的資料來源：申請表上填報的核准參照；
+  /// 核准紀錄本體以 AttachmentType.APPROVAL_RECORD 上傳，兩者互相勾稽。
+  approvalRef String?
+  approvedBy  String?
+
+  /// 分攤部門（R11, Tier 1）：[{ deptCode, amount }]
+  costAllocations Json?
+
+  createdAt DateTime @default(now())
+
+  receiptLinks ReceiptLineLink[]
+  matchResults MatchResult[]
+
+  @@unique([caseId, lineNo])
+  @@index([caseId])
 }
 
-model AgentSuggestion {
-  id         String      @id @default(cuid())
+model Receipt {
+  id         String        @id @default(cuid())
   caseId     String
-  case       ExpenseCase @relation(fields: [caseId], references: [id])
-  policyId   String?
-  policy     Policy?     @relation(fields: [policyId], references: [id])
-  verdict    CaseVerdict
-  confidence Float
-  reasoning  String
-  // Agent 引用的證據來源（單據欄位、Policy 條款、比對結果等）
-  evidence   Json
-  modelName  String
-  createdAt  DateTime    @default(now())
+  case       ExpenseCase   @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  documentId String?
+  document   CaseDocument? @relation(fields: [documentId], references: [id])
+  pageIndex  Int?
 
-  reviewDecisions ReviewDecision[]
+  extractionSource ExtractionSource @default(STRUCTURED_FIXTURE)
+
+  docNo       String?
+  issueDate   DateTime? @db.Date
+  amount      Decimal?  @db.Decimal(14, 2)
+  currency    String?
+  vendor      String?
+  category    String?
+  buyerTaxId  String?
+  sellerTaxId String?
+  taxAmount   Decimal?  @db.Decimal(14, 2)
+
+  /// 整張單據的最低信心，供 AC11「關鍵欄位低信心不判 NORMAL」快速判定
+  minConfidenceScore Decimal?         @db.Decimal(5, 4)
+  minConfidenceLevel ConfidenceLevel?
+
+  createdAt DateTime @default(now())
+
+  extractedFields ExtractedField[]
+  lineLinks       ReceiptLineLink[]
+  matchResults    MatchResult[]
+  evidences       Evidence[]
+
+  @@index([caseId])
+  @@index([caseId, docNo])
 }
 
-model ReviewDecision {
-  id           String           @id @default(cuid())
-  caseId       String
-  case         ExpenseCase      @relation(fields: [caseId], references: [id])
-  suggestionId String
-  suggestion   AgentSuggestion  @relation(fields: [suggestionId], references: [id])
-  reviewerId   String
-  reviewer     User             @relation(fields: [reviewerId], references: [id])
-  action       ReviewAction
-  overrideReason String?
-  decidedAt    DateTime         @default(now())
+/// 逐欄擷取明細（AC1：原始值 vs 擷取值 vs 信心、無法辨識明確標示）
+model ExtractedField {
+  id        String  @id @default(cuid())
+  receiptId String
+  receipt   Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+
+  fieldKey        String // docNo | issueDate | amount | currency | vendor | category | buyerTaxId
+  rawText         String?
+  normalizedValue String?
+  isRecognized    Boolean @default(true)
+
+  confidenceScore Decimal?        @db.Decimal(5, 4)
+  confidenceLevel ConfidenceLevel @default(NONE)
+
+  /// grounding 定位 { page, bbox }。Phase 1 可為 null。
+  anchor Json?
+
+  createdAt DateTime @default(now())
+
+  evidences Evidence[]
+
+  @@unique([receiptId, fieldKey])
 }
 
-model AuditLog {
-  id         String      @id @default(cuid())
-  caseId     String?
-  case       ExpenseCase? @relation(fields: [caseId], references: [id])
+/// 申報項目 ↔ 單據對應。支援 1:N 與未匹配偵測（prototype 案 2007 / 2010）。
+model ReceiptLineLink {
+  id        String      @id @default(cuid())
+  runId     String
+  run       ReviewRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  lineId    String
+  line      ExpenseLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  receiptId String
+  receipt   Receipt     @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+
+  matchScore Decimal? @db.Decimal(5, 4)
+  matchedBy  String? // "docNo" | "amount_date" | "manual"
+  createdAt  DateTime @default(now())
+
+  @@unique([runId, lineId, receiptId])
+  @@index([runId])
+}
+
+// =============================================================================
+// Agent 執行（一輪 = 一個 ReviewRun）
+// =============================================================================
+
+model ReviewRun {
+  id      String      @id @default(cuid())
+  caseId  String
+  case    ExpenseCase @relation("CaseRuns", fields: [caseId], references: [id], onDelete: Cascade)
+  roundNo Int
+
+  status ReviewRunStatus @default(PENDING)
+
+  policyVersionId  String?
+  policyVersion    PolicyVersion?    @relation(fields: [policyVersionId], references: [id])
+  policyResolution PolicyResolution?
+  engineVersion    String
+  extractionSource ExtractionSource  @default(STRUCTURED_FIXTURE)
+
+  /// 輸入快照（M1-U2 G4 可回放）
+  inputSnapshot Json?
+  snapshotHash  String?
+
+  // ---- 比對層總結（prototype MatchPanel）----
+  matchVerdict   MatchVerdict?
+  declaredCount  Int? // 申請項目數
+  receiptCount   Int? // 單據張數
+  sumDifference  Decimal? @db.Decimal(14, 2) // 加總差額（R10）
+
+  // ---- Agent 產出結論 ----
+  classification    Classification?
+  recommendedAction RecommendedAction?
+  /// 觸發階段，供 PipelineRail 標示案件在哪一關被攔下
+  triggerStage      TriggerStage?
+  /// 觸發原因摘要（prototype 的 trigger 文案）
+  summaryKey        String?
+  summaryParams     Json?
+
+  confidenceScore  Decimal?         @db.Decimal(5, 4)
+  confidenceLevel  ConfidenceLevel?
+  abstainReason    AbstainReason?
+  riskScore        Int?
+
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  errorMessage String?
+  createdAt    DateTime  @default(now())
+
+  matchResults MatchResult[]
+  ruleResults  RuleResult[]
+  receiptLinks ReceiptLineLink[]
+  dispositions Disposition[]
+  auditEvents  AuditEvent[]
+
+  currentOfCase ExpenseCase? @relation("CurrentRun")
+
+  @@unique([caseId, roundNo])
+  @@index([caseId, status])
+}
+
+/// 一致性比對結果（F4 / AC17）
+model MatchResult {
+  id    String    @id @default(cuid())
+  runId String
+  run   ReviewRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  scope   MatchScope
+  outcome MatchOutcome
+
+  lineId    String?
+  line      ExpenseLine? @relation(fields: [lineId], references: [id])
+  receiptId String?
+  receipt   Receipt?     @relation(fields: [receiptId], references: [id])
+
+  fieldKey      String?
+  declaredValue String?
+  receiptValue  String?
+  diffAmount    Decimal? @db.Decimal(14, 2)
+
+  messageKey    String?
+  messageParams Json?
+
+  createdAt DateTime @default(now())
+
+  evidences   Evidence[]
+  gatedRules  RuleResult[] @relation("GatedByMatch")
+
+  @@index([runId, scope])
+}
+
+/// 逐條檢查結果（F5 / AC8）。涵蓋 Policy 規則與產品內建 guardrail。
+model RuleResult {
+  id    String    @id @default(cuid())
+  runId String
+  run   ReviewRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  /// run 內唯一鍵。
+  /// Policy 規則 = PolicyRule.ruleKey；guardrail = RuleDefinition.code。
+  /// [FIX v3] v2 用 ruleCode 作唯一鍵，遇到多條無代碼的 guardrail 會撞鍵。
+  checkKey String
+
+  ruleDefinitionId String?
+  ruleDefinition   RuleDefinition? @relation(fields: [ruleDefinitionId], references: [id])
+  /// guardrail 無對應 Policy 條文，此欄為 null
+  policyRuleId     String?
+  policyRule       PolicyRule?     @relation(fields: [policyRuleId], references: [id])
+  /// 冗餘存放代碼，避免規則型錄異動後無法閱讀歷史
+  ruleCode         String
+
+  outcome  RuleOutcome
+  severity Severity    @default(MEDIUM)
+
+  /// 判定理由。DB 只存 key 與參數，中文由 i18n 組字。
+  /// isSuspicionOnly 的規則由 UI 自動加註「疑似」語氣，滿足不指控原則。
+  messageKey    String
+  messageParams Json?
+
+  // ---- 雙假設評估（B4）----
+  evaluationBasis   EvaluationBasis @default(SINGLE)
+  outcomeByDeclared RuleOutcome?
+  outcomeByReceipt  RuleOutcome?
+  /// outcome = GATED 時必填
+  gateReasonKey     String?
+  /// 導致無法評估的比對結果，供 UI 連回該筆差異
+  gatedByMatchId    String?
+  gatedByMatch      MatchResult?    @relation("GatedByMatch", fields: [gatedByMatchId], references: [id])
+
+  /// outcome = ABSTAIN 時必填
+  abstainReason AbstainReason?
+
+  /// 評估中間值，如 { limit: 4000, declared: 6800, excess: 2800 }
+  evaluationDetail Json?
+
+  confidenceScore Decimal?         @db.Decimal(5, 4)
+  confidenceLevel ConfidenceLevel?
+
+  createdAt DateTime @default(now())
+
+  evidences Evidence[]
+
+  @@unique([runId, checkKey])
+  @@index([runId, outcome])
+}
+
+/// 證據（Guardrail: Grounded）
+model Evidence {
+  id            String       @id @default(cuid())
+  ruleResultId  String?
+  ruleResult    RuleResult?  @relation(fields: [ruleResultId], references: [id], onDelete: Cascade)
+  matchResultId String?
+  matchResult   MatchResult? @relation(fields: [matchResultId], references: [id], onDelete: Cascade)
+
+  receiptId        String?
+  receipt          Receipt?        @relation(fields: [receiptId], references: [id])
+  extractedFieldId String?
+  extractedField   ExtractedField? @relation(fields: [extractedFieldId], references: [id])
+
+  /// 指向規範條文（版本由 PolicyRule → PolicyVersion 取得）
+  policyRuleId String?
+  policyRule   PolicyRule? @relation(fields: [policyRuleId], references: [id])
+
+  /// R7 重複 / R8 拆單 / 未匹配單據複查時指向另一筆案件
+  /// （prototype 案 2002 的 ref: "EXP-2026-1043"），使 UI 可點擊跳轉。
+  relatedCaseId String?
+  relatedCase   ExpenseCase? @relation("EvidenceRelatedCase", fields: [relatedCaseId], references: [id])
+
+  snippet String?
+  anchor  Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([ruleResultId])
+  @@index([matchResultId])
+  @@index([relatedCaseId])
+}
+
+// =============================================================================
+// 人工處置與稽核（M1-U1 F7/F8 + M1-U2）
+// =============================================================================
+
+/// 財務初審人員的處置事件。append-only。
+model Disposition {
+  id     String      @id @default(cuid())
+  caseId String
+  case   ExpenseCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  runId  String
+  run    ReviewRun   @relation(fields: [runId], references: [id])
+
+  actorId String
+  actor   User   @relation(fields: [actorId], references: [id])
+
+  action ReviewerAction
+
+  /// 決策當下的 Agent 建議快照，固化存放，
+  /// 使日後規則或 Policy 變更不會讓歷史徽章翻臉。
+  agentClassificationAtDecision Classification?
+  agentActionAtDecision         RecommendedAction?
+
+  /// 人工最終結論（人工優先序高於 Agent，擁有最終決定權）
+  finalClassification Classification?
+  finalAction         RecommendedAction?
+
+  /// 見 ConsistencyFlag 的計算式。寫入時固化。
+  consistencyFlag ConsistencyFlag
+
+  /// 覆寫／人工判斷理由。自由文字，原樣保存（不 i18n）。
+  /// OVERRIDDEN 或 HUMAN_ASSUMED 時必填。
+  reason String?
+
+  resultingStatus CaseStatus
+  createdAt       DateTime   @default(now())
+
+  @@index([caseId, createdAt])
+  @@index([runId])
+  @@index([consistencyFlag]) // M1-U2 AC10 快速篩選需複核案件
+}
+
+/// 主管稽核事件（F10 / M1-U2 AC6）。append-only。
+model SupervisorReview {
+  id     String      @id @default(cuid())
+  caseId String
+  case   ExpenseCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  actorId String
+  actor   User   @relation(fields: [actorId], references: [id])
+
+  action SupervisorAction
+  /// 稽核意見，自由文字。FLAG_CONCERN 時必填。
+  comment String?
+
+  resultingStatus CaseStatus?
+  createdAt       DateTime    @default(now())
+
+  @@index([caseId, createdAt])
+  @@index([action])
+}
+
+/// 不可竄改的處理歷程（M1-U2 AC1 / AC7）。
+/// hash chain：hash = sha256(prevHash || caseId || seq || type || payload || createdAt)
+model AuditEvent {
+  id     String      @id @default(cuid())
+  caseId String
+  case   ExpenseCase @relation(fields: [caseId], references: [id])
+  seq    Int // 案件內單調遞增，缺號即代表遭刪除
+
+  type AuditEventType
+
   actorId    String?
-  actor      User?       @relation(fields: [actorId], references: [id])
-  actorType  String // "AGENT" | "HUMAN" | "SYSTEM"
-  action     String
-  detail     Json
-  createdAt  DateTime    @default(now())
+  actor      User?   @relation(fields: [actorId], references: [id])
+  actorLabel String? // 系統事件，如 "system:review-engine"
+
+  runId String?
+  run   ReviewRun? @relation(fields: [runId], references: [id])
+
+  policyVersionId String?
+  policyVersion   PolicyVersion? @relation(fields: [policyVersionId], references: [id])
+
+  payload Json
+
+  prevHash String?
+  hash     String
+
+  createdAt DateTime @default(now())
+
+  @@unique([caseId, seq])
+  @@index([caseId, createdAt])
+  @@index([type])
 }
+
+/// 單筆案件的唯讀稽核紀錄導出（M1-U2 AC8）
+model AuditExport {
+  id      String      @id @default(cuid())
+  caseId  String
+  case    ExpenseCase @relation(fields: [caseId], references: [id])
+  actorId String
+  actor   User        @relation(fields: [actorId], references: [id])
+
+  format    String // "pdf" | "json"
+  fileId    String?
+  file      StoredFile? @relation(fields: [fileId], references: [id])
+  /// 導出當下的歷程末端 hash，供事後驗證檔案與 DB 一致
+  chainHead String?
+
+  createdAt DateTime @default(now())
+
+  @@index([caseId])
+}
+
+// =============================================================================
+// 需手寫進 migration 的 SQL（Prisma schema 無法表達）
+//
+// 1) append-only 保證
+//
+//    CREATE OR REPLACE FUNCTION deny_mutation() RETURNS trigger AS $$
+//    BEGIN
+//      RAISE EXCEPTION 'append-only table: % is immutable', TG_TABLE_NAME;
+//    END; $$ LANGUAGE plpgsql;
+//
+//    CREATE TRIGGER audit_event_immutable
+//      BEFORE UPDATE OR DELETE ON "AuditEvent"
+//      FOR EACH ROW EXECUTE FUNCTION deny_mutation();
+//    CREATE TRIGGER disposition_immutable
+//      BEFORE UPDATE OR DELETE ON "Disposition"
+//      FOR EACH ROW EXECUTE FUNCTION deny_mutation();
+//    CREATE TRIGGER supervisor_review_immutable
+//      BEFORE UPDATE OR DELETE ON "SupervisorReview"
+//      FOR EACH ROW EXECUTE FUNCTION deny_mutation();
+//
+//    註：seed reset 需繞過 trigger。建議 DROP SCHEMA 重建，語意比 DISABLE TRIGGER 乾淨。
+//
+// 2) 需要理由的處置不得留白（AC10）
+//
+//    ALTER TABLE "Disposition"
+//      ADD CONSTRAINT disposition_reason_required
+//      CHECK (
+//        "consistencyFlag" NOT IN ('OVERRIDDEN', 'HUMAN_ASSUMED')
+//        OR ("reason" IS NOT NULL AND length(btrim("reason")) > 0)
+//      );
+//
+// 3) 有疑慮必附意見（AC6）
+//
+//    ALTER TABLE "SupervisorReview"
+//      ADD CONSTRAINT supervisor_concern_requires_comment
+//      CHECK (
+//        "action" <> 'FLAG_CONCERN'
+//        OR ("comment" IS NOT NULL AND length(btrim("comment")) > 0)
+//      );
+//
+// 4) Evidence 至少掛在一個結論上
+//
+//    ALTER TABLE "Evidence"
+//      ADD CONSTRAINT evidence_requires_parent
+//      CHECK ("ruleResultId" IS NOT NULL OR "matchResultId" IS NOT NULL);
+//
+// 5) GATED 與 ABSTAIN 必附原因（B4 / Guardrail）
+//
+//    ALTER TABLE "RuleResult"
+//      ADD CONSTRAINT rule_result_gate_requires_reason
+//      CHECK ("outcome" <> 'GATED' OR "gateReasonKey" IS NOT NULL);
+//    ALTER TABLE "RuleResult"
+//      ADD CONSTRAINT rule_result_abstain_requires_reason
+//      CHECK ("outcome" <> 'ABSTAIN' OR "abstainReason" IS NOT NULL);
+//
+// 6) 每個 PolicyDocument 至多一個冷啟動預設版本
+//
+//    CREATE UNIQUE INDEX policy_version_single_bootstrap
+//      ON "PolicyVersion" ("policyDocumentId")
+//      WHERE "isBootstrap" = true;
+//
+// 7) 同一 PolicyDocument 的 ACTIVE 版本生效區間不得重疊
+//
+//    CREATE EXTENSION IF NOT EXISTS btree_gist;
+//    ALTER TABLE "PolicyVersion"
+//      ADD CONSTRAINT policy_version_no_overlap
+//      EXCLUDE USING gist (
+//        "policyDocumentId" WITH =,
+//        tstzrange("effectiveFrom", COALESCE("effectiveTo", 'infinity'::timestamptz)) WITH &&
+//      ) WHERE ("status" = 'ACTIVE');
+// =============================================================================
