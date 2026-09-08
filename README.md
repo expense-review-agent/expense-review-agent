@@ -38,3 +38,9 @@ for the full workflow and conventions (this applies to human contributors
 and AI coding agents alike).
 
 Before opening a PR: `pnpm lint && pnpm typecheck && pnpm test && pnpm build`.
+
+## Docs
+
+- [docs/PROJECT_STATUS.md](./docs/PROJECT_STATUS.md) — current status, what's built vs. not, test explainer, and the 3-person division of labor.
+- [docs/ONBOARDING.md](./docs/ONBOARDING.md) — get a new contributor from clone to a running app.
+- [docs/GOVERNANCE.md](./docs/GOVERNANCE.md) — GitHub settings that make CODEOWNERS / branch protection actually enforce.

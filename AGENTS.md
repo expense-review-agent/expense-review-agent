@@ -9,6 +9,10 @@ See `openspec/config.yaml` (`context:` block) for the product summary, milestone
 sequence (M1 Review Copilot → M2 Risk Intelligence → M3 Autonomous Review),
 and the tech stack. Read that before your first change.
 
+New here? Start with [docs/ONBOARDING.md](./docs/ONBOARDING.md). Repo owners:
+see [docs/GOVERNANCE.md](./docs/GOVERNANCE.md) for the branch-protection /
+CODEOWNERS steps that make permission control binding.
+
 ## Workflow: propose before you code
 
 This repo uses [OpenSpec](https://github.com/Fission-AI/OpenSpec) for spec-driven

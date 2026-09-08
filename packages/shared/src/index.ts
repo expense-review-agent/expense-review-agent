@@ -1,22 +1,22 @@
 import { z } from "zod";
+import { classificationSchema, recommendedActionSchema, confidenceLevelSchema } from "./enums";
 
-export const caseVerdictSchema = z.enum(["NORMAL", "EXCEPTION", "MISSING", "HUMAN"]);
-export type CaseVerdict = z.infer<typeof caseVerdictSchema>;
+export * from "./enums";
+export * from "./domain/disposition";
 
-export const reviewActionSchema = z.enum([
-  "ADOPT",
-  "OVERRIDE",
-  "REQUEST_DOCUMENT",
-  "ESCALATE_TO_HUMAN",
-]);
-export type ReviewAction = z.infer<typeof reviewActionSchema>;
+// =============================================================================
+// Agent suggestion payload shared by web/api
+// =============================================================================
 
 export const agentSuggestionSchema = z.object({
   id: z.string(),
   caseId: z.string(),
-  verdict: caseVerdictSchema,
-  confidence: z.number().min(0).max(1),
-  reasoning: z.string(),
-  evidence: z.record(z.string(), z.unknown()),
+  classification: classificationSchema,
+  recommendedAction: recommendedActionSchema,
+  /// 0..1；DB 以 Decimal(5,4) 儲存，跨層以 string 傳遞避免精度流失時可改為 z.string()
+  confidenceScore: z.number().min(0).max(1).nullable(),
+  confidenceLevel: confidenceLevelSchema,
+  reasoningKey: z.string(),
+  reasoningParams: z.record(z.string(), z.unknown()).default({}),
 });
 export type AgentSuggestion = z.infer<typeof agentSuggestionSchema>;

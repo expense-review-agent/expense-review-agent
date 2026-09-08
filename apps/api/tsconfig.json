@@ -13,5 +13,7 @@
     "baseUrl": "./",
     "incremental": true,
     "strict": true
-  }
+  },
+  "include": ["src", "test"],
+  "exclude": ["node_modules", "dist", "prisma/seed"]
 }

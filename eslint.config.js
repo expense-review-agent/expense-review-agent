@@ -14,6 +14,7 @@ export default tseslint.config(
       "**/generated/**",
       "eslint.config.js",
       "commitlint.config.cjs",
+      "**/prisma/seed/**",
     ],
   },
   js.configs.recommended,
@@ -34,6 +35,13 @@ export default tseslint.config(
       "@typescript-eslint/no-floating-promises": "error",
       "@typescript-eslint/no-explicit-any": "warn",
     },
+  },
+  {
+    // Test files use Node's built-in test runner (node:test / node:assert),
+    // whose call signatures aren't fully resolvable by the type-aware rules.
+    // Disable type-checked rules for tests — they don't need type-aware lint.
+    files: ["**/*.test.ts", "**/*.spec.ts", "**/__tests__/**/*.ts"],
+    ...tseslint.configs.disableTypeChecked,
   },
   eslintConfigPrettier,
 );
