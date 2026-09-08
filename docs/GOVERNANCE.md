@@ -18,18 +18,21 @@
 
 把下面每一項打勾，權限才算「鎖在人手上」。
 
-## 步驟一：把 CODEOWNERS 佔位帳號換成真人
+## 步驟一：把 CODEOWNERS 佔位帳號換成真人 — 🟡 待補組員 ID
 
-編輯 [`CODEOWNERS`](../CODEOWNERS)，把下列佔位符換成實際 GitHub 帳號
-（`@` 開頭；team 用 `@org/team-name`）：
+[`CODEOWNERS`](../CODEOWNERS) 已依三人分工指派：
 
-- [ ] `@schema-owner` → 實際掌管 schema / migration / 領域契約的人（建議：你）
-- [ ] `@backend-owner` → 後端 review 模組負責人
-- [ ] `@web-queue-owner` → 前端待審佇列頁負責人
-- [ ] `@web-detail-owner` → 前端案件詳情頁 + 共用元件負責人
-- [ ] `@web-audit-owner` → 前端稽核頁負責人
+- [x] schema / migration / 領域契約 → `@ChichiTung`（schema owner）
+- [x] 後端 review 模組 → `@ChichiTung`（後端引擎）
+- [ ] 前端待審佇列頁 → `@memberA`（主前端邏輯）
+- [ ] 前端案件詳情頁 + 共用元件 → `@memberA`（主前端邏輯）
+- [ ] 前端稽核頁 → `@memberB`（較單純前端）
 
-> 一人身兼多角在小團隊很正常——直接把同一個帳號填到多個位置即可。
+> ⚠️ **`@memberA` / `@memberB` 仍是佔位**，請把它們換成兩位組員的實際 GitHub ID
+> （`CODEOWNERS` 檔內同樣有兩處 TODO 待替換）。換完才算真正生效。
+>
+> 分工對應：@ChichiTung 後端引擎；@memberA 主前端（queue + detail + 共用元件，較複雜）；
+> @memberB 較單純前端（audit 稽核頁，唯讀）。
 
 ## 步驟二：開啟 Branch protection（讓 CODEOWNERS 有強制力）
 

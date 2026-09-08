@@ -23,10 +23,12 @@
 /openspec/config.yaml               @ChichiTung
 
 # ---- 分區擁有者：各自負責，減少衝突 ----
+# 分工：@ChichiTung 後端引擎；@memberA 主前端邏輯；@memberB 較單純前端。
+# TODO: 把 @memberA / @memberB 換成組員實際 GitHub ID。
 /apps/api/src/review/               @ChichiTung
-/apps/web/src/features/queue/       @ChichiTung
-/apps/web/src/features/detail/      @ChichiTung
-/apps/web/src/features/audit/       @ChichiTung
+/apps/web/src/features/queue/       @memberA
+/apps/web/src/features/detail/      @memberA
+/apps/web/src/features/audit/       @memberB
 
-# 共用 UI 元件容易被多人同時改，指定一位收斂
-/apps/web/src/components/           @ChichiTung
+# 共用 UI 元件容易被多人同時改，指定一位收斂（歸主前端 @memberA）
+/apps/web/src/components/           @memberA
