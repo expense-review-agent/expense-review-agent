@@ -1,34 +1,6 @@
 # CODEOWNERS
 #
-# 用途：讓 GitHub 在 PR 動到這些路徑時自動指派審查者。
-# 搭配「branch protection → require review from Code Owners」才有強制力。
-# 把 @your-github-id 換成實際帳號。
+# ⚠️ 此檔非權威版本。GitHub 讀取優先序為 .github/ > 根目錄 > docs/，
+# 因此實際生效的是 `.github/CODEOWNERS`。請只維護那一份，避免兩份不同步。
 #
-# 原則：越容易造成全隊災難的檔案，擁有者越集中。
-
-# ---- 單一擁有者：改動會影響所有人 ----
-# schema 與 migration 是最容易互相覆蓋、也最難救回的地方。
-# 隊友需要改欄位時，開 issue 給 owner，不要自己動。
-/apps/api/prisma/schema.prisma      @ChichiTung
-/apps/api/prisma/migrations/        @ChichiTung
-
-# 領域契約：矩陣、徽章計算、規則參數 schema。前後端都依賴。
-/packages/shared/src/domain/        @ChichiTung
-
-# 專案級規範與 agent 設定
-/CLAUDE.md                          @ChichiTung
-/AGENTS.md                          @ChichiTung
-/.claude/                           @ChichiTung
-/CODEOWNERS                         @ChichiTung
-/openspec/config.yaml               @ChichiTung
-
-# ---- 分區擁有者：各自負責，減少衝突 ----
-# 分工：@ChichiTung 後端引擎；@memberA 主前端邏輯；@memberB 較單純前端。
-# TODO: 把 @memberA / @memberB 換成組員實際 GitHub ID。
-/apps/api/src/review/               @ChichiTung
-/apps/web/src/features/queue/       @memberA
-/apps/web/src/features/detail/      @memberA
-/apps/web/src/features/audit/       @memberB
-
-# 共用 UI 元件容易被多人同時改，指定一位收斂（歸主前端 @memberA）
-/apps/web/src/components/           @memberA
+# 見 .github/CODEOWNERS 取得完整、生效中的擁有者指派。
