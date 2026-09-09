@@ -3,6 +3,7 @@ import { classificationSchema, recommendedActionSchema, confidenceLevelSchema } 
 
 export * from "./enums";
 export * from "./domain/disposition";
+export * from "./api";
 
 // =============================================================================
 // Agent suggestion payload shared by web/api
