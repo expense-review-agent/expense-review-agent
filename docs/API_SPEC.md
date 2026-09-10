@@ -241,10 +241,28 @@
 **請求**
 
 ```json
-{ "runId": "clr...", "action": "ACCEPT", "reason": "（覆寫或人工判斷時必填）" }
+{
+  "runId": "clr...",
+  "action": "MANUAL_JUDGEMENT",
+  "finalAction": "REQUEST_INFO",
+  "reason": "（覆寫或人工判斷時必填）"
+}
 ```
 
 `action`: `ACCEPT | REQUEST_INFO | MANUAL_JUDGEMENT | HOLD`（見 shared/disposition.ts）。
+
+`finalAction`: `APPROVE | REQUEST_INFO | MANUAL_REVIEW`，**人工最終結論**。
+**只有 `MANUAL_JUDGEMENT` 可以帶，且必填**（由 UI modal 指定通過／補件／人工審核）；
+其餘動作**帶了就回 400**——結論由動作本身決定，靜默忽略會讓前端誤以為自己指定的值生效了。
+
+各動作寫入 DB 的 `finalAction`：
+
+| action             | 寫入的 finalAction     | 一致性徽章（範例：agent 建議 APPROVE）      |
+| ------------------ | ---------------------- | ------------------------------------------- |
+| `ACCEPT`           | 決策當下的 Agent 建議  | `CONSISTENT`                                |
+| `REQUEST_INFO`     | `REQUEST_INFO`         | `OVERRIDDEN`（理由必填）                    |
+| `MANUAL_JUDGEMENT` | 請求帶的 `finalAction` | 依算式，多為 `OVERRIDDEN` / `HUMAN_ASSUMED` |
+| `HOLD`             | `null`（尚未下結論）   | `PENDING_DECISION`（理由非必填）            |
 
 **回應 201**
 
@@ -253,8 +271,12 @@
 ```
 
 > DEMO 備註：**必須**用 `resolveDisposition(recommendation, action)` 驗證合法性——非法動作回 400。
-> 寫入 Disposition（append-only）+ 一筆 AuditEvent。`MANUAL_REVIEW+ACCEPT` 要 escalate（見矩陣）。
-> `reason` 在 OVERRIDDEN/HUMAN_ASSUMED 時必填，否則 DB CHECK 會擋（回 400 而非讓 DB 報 500）。
+> 寫入 Disposition（append-only）+ 一筆 AuditEvent。`MANUAL_REVIEW+ACCEPT` 要 escalate（見矩陣）；
+> `MANUAL_REVIEW+MANUAL_JUDGEMENT` **不** escalate（人已下結論，由人承擔）。
+> 徽章一律用 shared 的 `deriveConsistencyFlag(agentActionAtDecision, finalAction)` 算，
+> **api 不得自行實作算式**。`reason` 在 OVERRIDDEN/HUMAN_ASSUMED 時必填，否則 DB CHECK 會擋
+> （回 400 而非讓 DB 報 500）。AuditEvent payload 會帶 `finalAction` 與 `consistencyFlag`，
+> 稽核頁不必回查 Disposition 表。
 
 ## 11. POST /api/cases/:id/supervisor-review
 

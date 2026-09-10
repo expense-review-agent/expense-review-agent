@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import {
   resolveDisposition,
   isLegalDisposition,
+  deriveConsistencyFlag,
   computeAuditHash,
 } from "@expense-review-agent/shared";
 import type {
@@ -12,6 +13,8 @@ import type {
   DispositionResponse,
   SupervisorReviewRequest,
   AuditTrailResponse,
+  RecommendedAction,
+  ReviewerAction,
 } from "@expense-review-agent/shared";
 
 /**
@@ -21,6 +24,9 @@ import type {
  * - Reviewer 動作必須用 shared 的合法動作矩陣驗證，非法動作回 400（不進 DB）。
  * - 需要理由的處置留白 → 回 400。
  * - MANUAL_REVIEW + ACCEPT → escalate（轉呈主管，不下最終結論）。
+ * - finalAction / finalClassification 記錄「人工」的結論，不是 Agent 建議的複本。
+ * - 一致性徽章由 shared 的 deriveConsistencyFlag() 依 finalAction 與
+ *   agentActionAtDecision 算出後固化寫入；api 端不得自行實作算式。
  * - 處置與稽核事件在同一 transaction 寫入（要嘛都成功、要嘛都不寫）。
  * - Disposition / SupervisorReview / AuditEvent 是 append-only（DB trigger 保證）。
  */
@@ -53,21 +59,42 @@ export class ReviewService {
     }
     const rule = resolveDisposition(recommendation, body.action);
 
-    // 2) 計算一致性徽章 + 判斷是否需要理由
-    const consistencyFlag = this.computeConsistencyFlag(body.action, rule.escalates);
+    // 2) finalAction 的帶法驗證（在碰 DB 前擋下）
+    //    MANUAL_JUDGEMENT 的結論由 UI modal 指定，必填；其餘動作的結論由動作本身
+    //    決定，若也帶 finalAction 就一律拒絕——靜默忽略會讓前端誤以為它生效了。
+    if (body.action === "MANUAL_JUDGEMENT" && !body.finalAction) {
+      throw new BadRequestException("MANUAL_JUDGEMENT requires a finalAction");
+    }
+    if (body.action !== "MANUAL_JUDGEMENT" && body.finalAction) {
+      throw new BadRequestException(
+        `finalAction is only accepted for MANUAL_JUDGEMENT, not "${body.action}"`,
+      );
+    }
+
+    // 3) 人工最終結論。這是「人」的結論，不是 Agent 建議的複本。
+    const finalAction = this.resolveFinalAction(body.action, recommendation, body.finalAction);
+
+    // 分類是 Agent 的判定語彙，人工不重新分類——只有在人工採用了 Agent 的結論時，
+    // 分類才等同 Agent 分類；人工改了結論就無從反推分類（MANUAL_REVIEW 可能來自
+    // EXCEPTION 或 HUMAN），留 null 而不硬湊一個 Agent 從未做出的判定。
+    const finalClassification =
+      finalAction !== null && finalAction === run.recommendedAction ? run.classification : null;
+
+    // 4) 一致性徽章：唯一算式在 shared，api 不自行實作
+    const { flag: consistencyFlag, reasonRequired: flagNeedsReason } = deriveConsistencyFlag({
+      agentActionAtDecision: run.recommendedAction,
+      finalAction,
+    });
 
     // 需要理由卻留白 → 400（同時也是 DB CHECK 會擋的條件，這裡先擋給好錯誤訊息）
-    const reasonRequired =
-      rule.reasonRequired ||
-      consistencyFlag === "OVERRIDDEN" ||
-      consistencyFlag === "HUMAN_ASSUMED";
+    const reasonRequired = Boolean(rule.reasonRequired) || flagNeedsReason;
     if (reasonRequired && !body.reason?.trim()) {
       throw new BadRequestException("This action requires a reason");
     }
 
     const actor = await this.demoUser(this.DEMO_REVIEWER_EMAIL);
 
-    // 3) 交易：寫 Disposition + AuditEvent（同生共死）
+    // 5) 交易：寫 Disposition + AuditEvent（同生共死）
     const result = await this.prisma.$transaction(async (tx) => {
       const disposition = await tx.disposition.create({
         data: {
@@ -77,8 +104,8 @@ export class ReviewService {
           action: body.action,
           agentClassificationAtDecision: run.classification,
           agentActionAtDecision: run.recommendedAction,
-          finalClassification: run.classification,
-          finalAction: run.recommendedAction,
+          finalClassification,
+          finalAction,
           consistencyFlag,
           reason: body.reason ?? null,
           resultingStatus: rule.resultingStatus,
@@ -92,9 +119,12 @@ export class ReviewService {
       });
 
       // 附稽核事件（hash chain）
+      // payload 帶上人工結論與徽章，稽核頁不必回查 Disposition 表即可讀出結論
       await this.appendAudit(tx, caseId, "REVIEWER_DISPOSITION", {
         dispositionId: disposition.id,
         action: body.action,
+        finalAction,
+        consistencyFlag,
         escalated: rule.escalates ?? false,
       });
 
@@ -185,14 +215,31 @@ export class ReviewService {
 
   // ---- helpers ----
 
-  /** 一致性徽章計算（DEMO 版）。ACCEPT=一致；escalate=轉呈；其餘=覆寫。 */
-  private computeConsistencyFlag(
-    action: string,
-    escalates?: boolean,
-  ): "CONSISTENT" | "OVERRIDDEN" | "HUMAN_ASSUMED" | "ESCALATED" | "REASON_MISSING" {
-    if (action === "ACCEPT") return escalates ? "ESCALATED" : "CONSISTENT";
-    if (action === "MANUAL_JUDGEMENT") return "HUMAN_ASSUMED";
-    return "OVERRIDDEN";
+  /**
+   * 由 Reviewer 動作推導人工最終結論。
+   *
+   * - ACCEPT           → 採用 Agent 建議，結論等於決策當下的建議
+   * - REQUEST_INFO     → 退回補件
+   * - MANUAL_JUDGEMENT → UI modal 指定（呼叫端已驗證必填）
+   * - HOLD             → 保留待處理，尚未下結論
+   *
+   * 徽章不看這裡的動作標籤，只看推導出的結論——算式在 shared。
+   */
+  private resolveFinalAction(
+    action: ReviewerAction,
+    recommendation: RecommendedAction,
+    specified: RecommendedAction | undefined,
+  ): RecommendedAction | null {
+    switch (action) {
+      case "ACCEPT":
+        return recommendation;
+      case "REQUEST_INFO":
+        return "REQUEST_INFO";
+      case "MANUAL_JUDGEMENT":
+        return specified ?? null;
+      case "HOLD":
+        return null;
+    }
   }
 
   private async demoUser(email: string) {

@@ -171,6 +171,9 @@ export const dispositionRequestSchema = z.object({
   runId: z.string(),
   action: reviewerActionSchema,
   reason: z.string().optional(),
+  /// 人工最終結論。`MANUAL_JUDGEMENT` 時必填（由 UI modal 指定通過／補件／人工審核）；
+  /// 其餘動作不得帶——結論由動作本身決定，靜默忽略會讓前端誤以為自己指定的值生效了。
+  finalAction: recommendedActionSchema.optional(),
 });
 export type DispositionRequest = z.infer<typeof dispositionRequestSchema>;
 

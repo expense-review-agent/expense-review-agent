@@ -1,6 +1,6 @@
 # 專案現況與交接說明（PROJECT STATUS & HANDOFF）
 
-> 對象：專案三位成員。目的：讓每個人**完全理解目前做到哪、還有什麼沒做、 怎麼上手 git 與功能開發、以及分工**。 最後更新：2026-09-09（by @ChichiTung） 搭配閱讀：[ONBOARDING.md](./ONBOARDING.md)（環境建置）、 [GOVERNANCE.md](./GOVERNANCE.md)（權限設定）、 根目錄 [CLAUDE.md](../CLAUDE.md)（不可違反的領域規則）、[AGENTS.md](../AGENTS.md)（開發流程）。
+> 對象：專案三位成員。目的：讓每個人**完全理解目前做到哪、還有什麼沒做、 怎麼上手 git 與功能開發、以及分工**。 最後更新：2026-09-10（by @ChichiTung） 搭配閱讀：[ONBOARDING.md](./ONBOARDING.md)（環境建置）、 [GOVERNANCE.md](./GOVERNANCE.md)（權限設定）、 根目錄 [CLAUDE.md](../CLAUDE.md)（不可違反的領域規則）、[AGENTS.md](../AGENTS.md)（開發流程）。
 
 ---
 
@@ -31,7 +31,7 @@
 | shared 型別契約                  | ✅ 完成         | ~95%   | enum 詞彙、disposition 矩陣、parity/matrix 測試、API 契約型別             |
 | seed 示範資料                    | 🟡 骨架+        | ~45%   | 4 案 + R7 參照 + 明細列(ExpenseLine) + currentRunId，尚未到 10 情境       |
 | **後端 API（讀取類）**           | ✅ 跑通         | ~80%   | 案件 summary/list/detail/related、policies 皆 curl 驗證通過               |
-| **後端 API（寫入類）**           | 🟡 已寫未測     | ~60%   | disposition/supervisor/audit 程式已寫、四關綠，但尚未 curl 驗證           |
+| **後端 API（寫入類）**           | ✅ 跑通         | ~75%   | disposition/supervisor/audit 已 curl 驗證；徽章缺陷已由後續 change 修正   |
 | **後端審核引擎（規則判定深度）** | 🟡 DEMO 簡化    | ~25%   | run 為 DEMO 判定（讀 seed 結果）；完整 R1~R10 規則引擎未做（後續 change） |
 | **前端所有畫面**                 | ❌ 未開始       | ~2%    | `apps/web` 還是 Vite 計數器樣板                                           |
 | **OCR（Phase 2）**               | ❌ 未做（刻意） | 0%     | CLAUDE.md 規定 M1 不做 OCR，用 fixture                                    |
@@ -65,12 +65,20 @@
 
 ## 3. 目前的測試在測什麼（重要澄清）
 
-`pnpm test` 目前 **14 個測試全在 **`packages/shared`**，是純邏輯單元測試**：
+`pnpm test` 目前 **36 個測試**（`packages/shared` 24 + `apps/api` 12），全是不連 DB 的單元測試：
 
 - **enum-parity（8）**：讀 `schema.prisma` 的 enum，跟 `enums.ts` 的 Zod enum 逐一比對， 確保「資料庫 ↔ 前後端共用型別」100% 一致。任一邊改 enum 沒同步，這關就紅。
-- **disposition（6）**：測合法動作矩陣（非法動作被拒、`MANUAL_REVIEW+ACCEPT` 會 escalate 等）。
+- **disposition 矩陣（6）**：測合法動作矩陣（非法動作被拒、`MANUAL_REVIEW+ACCEPT` 會 escalate 等）。
+- **consistency-flag（10）**：徽章算式，窮舉 `agentActionAtDecision` × `finalAction` 全部 16 組。
+- **review.service（12，`apps/api`）**：處置寫入的 400 路徑（斷言 `$transaction` 未被呼叫）與五種徽章的實際寫入欄位。
 
-**目前沒有審核引擎的測試、沒有 mock 案件資料在測試裡、沒有連 DB 的整合測試** —— 因為審核引擎還沒寫。 `apps/api` 的 `app.controller.spec.ts` 只是 NestJS 樣板（"Hello World"），非業務邏輯。
+**目前沒有審核引擎的測試、沒有連 DB 的整合測試** —— 因為審核引擎還沒寫。
+
+> 更新（2026-09-10）：`fix-disposition-consistency-flag` 已加入 `apps/api` 的第一個
+> 測試檔 `src/review/review.service.spec.ts`（12 個，手寫 fake Prisma、不連 DB），
+> 以及 `packages/shared` 的徽章算式測試（10 個）。`apps/api/test/app.e2e-spec.ts`
+> 仍是 NestJS 樣板且斷言的 `AppController` 已不存在——`pnpm test` 掃不到它
+> （jest `rootDir: src`），屬待清理的死檔。
 
 > 執行方式：shared 用 Node 內建 `node --test`（零額外套件）；api 用 jest。
 
@@ -178,11 +186,21 @@ pnpm --filter api db:reset   # DROP SCHEMA + migrate + seed，回乾淨狀態
 
 剩：`2.3` hash chain 竄改測試、`4.2` seed 擴充到 10 情境、`4.4` 低信心欄位案件、 `4.5` db:reset 兩次一致性、`6.2` app 端到端驗證。
 
-### `review-engine-api`（後端 API）— ✅ 20/20 完成（結案）
+### `review-engine-api`（後端 API）— 20/20 實作完成，但**尚不宜 archive**
 
 - 11 支 API 全部實機 curl 驗證：讀取類（summary/list/detail/related/policies）、 非同步 run、disposition（矩陣驗證/需理由 400/escalate）、supervisor-review （需意見 400/退回 QUEUED）、audit（hash chain `chainValid: true`）。
 - hash helper 已抽到 `packages/shared`（stableStringify + epoch-ms 修好 JSONB 重排問題）。
 - 四關 CI 全綠。
+
+> ⚠️ **後續稽核發現的缺陷（2026-09-10）**：本 change 的 disposition 實作有兩處與
+> `CLAUDE.md` 定案不符——`finalAction` / `finalClassification` 被寫成 Agent 建議的
+> 複本（人工結論從未被記錄），且一致性徽章沒依 `finalAction` 與
+> `agentActionAtDecision` 計算。另外 tasks 5.1/5.2/5.4 標註「測試通過」，實際上
+> `apps/api` 當時**零個測試檔**，驗證是靠 curl。
+>
+> 已由 `fix-disposition-consistency-flag` 修正（徽章算式移入 `packages/shared`、
+> 新增 `PENDING_DECISION`、補上 shared 與 api 兩層測試）。**本 change 待該修正
+> 一併 review 後再 archive。**
 
 完整清單見各自的 `openspec/changes/<id>/tasks.md`。
 
