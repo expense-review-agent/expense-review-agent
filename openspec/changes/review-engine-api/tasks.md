@@ -24,17 +24,17 @@
 
 ## 5. 人工處置與稽核（disposition + supervisor + audit）
 
-- [ ] 5.1 `POST /api/cases/:id/disposition`：用 shared `resolveDisposition()` 驗證動作合法性，非法動作回 400（不進 DB），驗證非法動作測試通過
-- [ ] 5.2 disposition 需理由卻留白時回 400；`MANUAL_REVIEW + ACCEPT` 走 escalate，驗證兩種行為的測試通過
-- [ ] 5.3 disposition 成功時於同一 `$transaction` 寫入 Disposition（append-only）+ 一筆 hash-chained AuditEvent，驗證 DB 出現對應兩列
-- [ ] 5.4 `POST /api/cases/:id/supervisor-review`：寫入 SupervisorReview + AuditEvent；FLAG_CONCERN 無 comment 回 400，驗證測試通過
-- [ ] 5.5 `GET /api/cases/:id/audit` 依 seq 回稽核軌跡並回報 `chainValid`，驗證竄改一筆後 chainValid=false
+- [x] 5.1 `POST /api/cases/:id/disposition`：用 shared `resolveDisposition()` 驗證動作合法性，非法動作回 400（不進 DB），驗證非法動作測試通過
+- [x] 5.2 disposition 需理由卻留白時回 400；`MANUAL_REVIEW + ACCEPT` 走 escalate，驗證兩種行為的測試通過
+- [x] 5.3 disposition 成功時於同一 `$transaction` 寫入 Disposition（append-only）+ 一筆 hash-chained AuditEvent，驗證 DB 出現對應兩列
+- [x] 5.4 `POST /api/cases/:id/supervisor-review`：寫入 SupervisorReview + AuditEvent；FLAG_CONCERN 無 comment 回 400，驗證測試通過
+- [x] 5.5 `GET /api/cases/:id/audit` 依 seq 回稽核軌跡並回報 `chainValid`，驗證竄改一筆後 chainValid=false
 
 ## 6. 整合驗證
 
 - [x] 6.1 將所有模組接進 `app.module.ts`，`pnpm lint && pnpm typecheck && pnpm test && pnpm build` 四關全綠
-- [ ] 6.2 `db:reset` 後端到端跑通：summary → list → detail → run → disposition → audit 一條龍，驗證前端可據此演出 demo 流程
+- [x] 6.2 `db:reset` 後端到端跑通：summary → list → detail → run → disposition → audit 一條龍，驗證前端可據此演出 demo 流程
 
 ## 7. 選用（可延後，不影響 demo）
 
-- [ ] 7.1（Open Question）將稽核 hash-chain helper 抽到 `packages/shared` 供 seed 與 API 共用，驗證兩處 chain 計算一致
+- [x] 7.1（Open Question）將稽核 hash-chain helper 抽到 `packages/shared` 供 seed 與 API 共用，驗證兩處 chain 計算一致

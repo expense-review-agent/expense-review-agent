@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { Prisma } from "@prisma/client";
-import { computeAuditHash } from "../common/hash-chain";
+import { computeAuditHash } from "@expense-review-agent/shared";
 import type { CreateRunResponse, RunStateResponse } from "@expense-review-agent/shared";
 
 /**

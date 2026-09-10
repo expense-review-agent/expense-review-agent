@@ -1,7 +1,6 @@
 # 專案現況與交接說明（PROJECT STATUS & HANDOFF）
 
-> 對象：專案三位成員。目的：讓每個人**完全理解目前做到哪、還有什麼沒做、 怎麼上手 git 與功能開發、以及分工**。 最後更新：2026-09-09（by @ChichiTung）
-> 搭配閱讀：[ONBOARDING.md](./ONBOARDING.md)（環境建置）、 [GOVERNANCE.md](./GOVERNANCE.md)（權限設定）、 根目錄 [CLAUDE.md](../CLAUDE.md)（不可違反的領域規則）、[AGENTS.md](../AGENTS.md)（開發流程）。
+> 對象：專案三位成員。目的：讓每個人**完全理解目前做到哪、還有什麼沒做、 怎麼上手 git 與功能開發、以及分工**。 最後更新：2026-09-09（by @ChichiTung） 搭配閱讀：[ONBOARDING.md](./ONBOARDING.md)（環境建置）、 [GOVERNANCE.md](./GOVERNANCE.md)（權限設定）、 根目錄 [CLAUDE.md](../CLAUDE.md)（不可違反的領域規則）、[AGENTS.md](../AGENTS.md)（開發流程）。
 
 ---
 
@@ -22,9 +21,9 @@
 
 ---
 
-## 2. 目前完成到哪（整體約 40–45%）
+## 2. 目前完成到哪（整體約 50–55%）
 
-地基完成，且**後端 API 骨架已跑通**。誠實的完成度：
+地基完成，且**後端 M1 API 已全部實機驗證結案**。誠實的完成度：
 
 | 層                               | 狀態            | 完成度 | 說明                                                                      |
 | -------------------------------- | --------------- | ------ | ------------------------------------------------------------------------- |
@@ -52,8 +51,8 @@
 
 ### ❌ 尚未開發（M1 待做的主體）
 
-- **後端寫入類 API 實測**：disposition/supervisor/audit 程式已寫、四關綠， 但尚未實際 curl 驗證（append-only + hash chain + 矩陣驗證的實機行為）。
-- **完整審核引擎**：目前 run 是 DEMO 簡化判定（讀 seed 結果）；完整規則 handler （R1~R10）、一致性比對、雙假設評估屬後續 change，DEMO 不一定需要。
+- **完整審核引擎**：目前 run 是 DEMO 簡化判定（讀 seed 結果）；完整規則 handler（R1~R10）、一致性比對、雙假設評估屬後續 change，DEMO 不一定需要。
+- **空 body 防禦**：送空 body 時目前回 500（應回 400）；DEMO 不影響，Phase 2 用 DTO + ValidationPipe 補。
 - **前端畫面**：案件總覽儀表板 + 側邊主選單、案件詳情（檢查清單條列）、稽核頁。
 - **seed 擴充**：從 4 案補到完整 10 情境（含低信心欄位案件）。
 - **i18n 文案**：`messageKey` 對應的中文組字。
@@ -66,7 +65,7 @@
 
 ## 3. 目前的測試在測什麼（重要澄清）
 
-`pnpm test` 目前 **14 個測試全在 **`packages/shared`，是**純邏輯單元測試**：
+`pnpm test` 目前 **14 個測試全在 **`packages/shared`**，是純邏輯單元測試**：
 
 - **enum-parity（8）**：讀 `schema.prisma` 的 enum，跟 `enums.ts` 的 Zod enum 逐一比對， 確保「資料庫 ↔ 前後端共用型別」100% 一致。任一邊改 enum 沒同步，這關就紅。
 - **disposition（6）**：測合法動作矩陣（非法動作被拒、`MANUAL_REVIEW+ACCEPT` 會 escalate 等）。
@@ -179,15 +178,16 @@ pnpm --filter api db:reset   # DROP SCHEMA + migrate + seed，回乾淨狀態
 
 剩：`2.3` hash chain 竄改測試、`4.2` seed 擴充到 10 情境、`4.4` 低信心欄位案件、 `4.5` db:reset 兩次一致性、`6.2` app 端到端驗證。
 
-### `review-engine-api`（後端 API）— 13/20 完成
+### `review-engine-api`（後端 API）— ✅ 20/20 完成（結案）
 
-- ✅ 已完成：shared 型別、Prisma+health、cases、policies、runs、四關 CI。
-- 🟡 剩：`5.1~5.5` 寫入類 API 實測（disposition/supervisor/audit）、 `6.2` 端到端寫入流程、`7.1`（選用）hash helper 抽到 shared。
+- 11 支 API 全部實機 curl 驗證：讀取類（summary/list/detail/related/policies）、 非同步 run、disposition（矩陣驗證/需理由 400/escalate）、supervisor-review （需意見 400/退回 QUEUED）、audit（hash chain `chainValid: true`）。
+- hash helper 已抽到 `packages/shared`（stableStringify + epoch-ms 修好 JSONB 重排問題）。
+- 四關 CI 全綠。
 
 完整清單見各自的 `openspec/changes/<id>/tasks.md`。
 
 ### monorepo 開發節奏提醒（本次學到）
 
-- **改了 **`packages/shared`** 一定要 **`pnpm --filter shared build`，否則 api（吃 dist）拿到舊版。
-- **後端 tsconfig 用 **`module: CommonJS`** + **`moduleResolution: Node`（NestJS 執行期需求）。
+- **改了 `packages/shared` 一定要 **`pnpm --filter shared build`，否則 api（吃 dist）拿到舊版。
+- **後端 tsconfig 用 `module: CommonJS` + **`moduleResolution: Node`（NestJS 執行期需求）。
 - `tsc --noEmit`** 過 ≠ 跑得起來**，真正驗證要 `pnpm dev:api` 實際執行。

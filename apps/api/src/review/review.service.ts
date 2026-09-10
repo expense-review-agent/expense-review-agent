@@ -1,8 +1,12 @@
 import { Injectable, BadRequestException, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { Prisma } from "@prisma/client";
-import { computeAuditHash } from "../common/hash-chain";
-import { resolveDisposition, isLegalDisposition } from "@expense-review-agent/shared";
+
+import {
+  resolveDisposition,
+  isLegalDisposition,
+  computeAuditHash,
+} from "@expense-review-agent/shared";
 import type {
   DispositionRequest,
   DispositionResponse,
