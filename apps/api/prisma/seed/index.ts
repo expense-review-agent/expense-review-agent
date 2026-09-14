@@ -216,6 +216,11 @@ async function main(): Promise<void> {
       applicationDate: string;
       declaredTotal: string;
       currency?: string;
+      // 明細列欄位（供列表顯示費用類別 / 消費日期 / 說明）
+      category?: string;
+      expenseDate?: string;
+      vendor?: string;
+      description?: string;
     }) {
       const c = await tx.expenseCase.create({
         data: {
@@ -227,6 +232,21 @@ async function main(): Promise<void> {
           declaredTotal: new Prisma.Decimal(opts.declaredTotal),
           currency: opts.currency ?? "TWD",
           policyVersionId: policyVersion.id,
+        },
+      });
+      // 建一筆明細列（ExpenseLine），讓列表能顯示類別/日期/說明。
+      await tx.expenseLine.create({
+        data: {
+          caseId: c.id,
+          lineNo: 1,
+          amount: new Prisma.Decimal(opts.declaredTotal),
+          currency: opts.currency ?? "TWD",
+          expenseDate: opts.expenseDate
+            ? new Date(opts.expenseDate)
+            : new Date(opts.applicationDate),
+          category: opts.category ?? null,
+          vendor: opts.vendor ?? null,
+          description: opts.description ?? null,
         },
       });
       const chain = { caseId: c.id, seq: 0, prevHash: null as string | null };
@@ -244,6 +264,10 @@ async function main(): Promise<void> {
         status: "DISPOSED",
         applicationDate: "2026-08-12",
         declaredTotal: "1200",
+        category: "辦公用品",
+        expenseDate: "2026-08-10",
+        vendor: "文具行 A",
+        description: "辦公用品採購",
       });
       const run = await tx.reviewRun.create({
         data: {
@@ -258,6 +282,10 @@ async function main(): Promise<void> {
           recommendedAction: "APPROVE",
           confidenceLevel: "HIGH",
         },
+      });
+      await tx.expenseCase.update({
+        where: { id: c.id },
+        data: { currentRunId: run.id },
       });
       await tx.ruleResult.create({
         data: {
@@ -284,6 +312,10 @@ async function main(): Promise<void> {
         status: "DISPOSED",
         applicationDate: "2026-08-20",
         declaredTotal: "3500",
+        category: "餐費",
+        expenseDate: "2026-08-05",
+        vendor: "餐廳 B",
+        description: "客戶餐敘",
       });
       const run = await tx.reviewRun.create({
         data: {
@@ -298,6 +330,10 @@ async function main(): Promise<void> {
           triggerStage: "RULES",
           confidenceLevel: "HIGH",
         },
+      });
+      await tx.expenseCase.update({
+        where: { id: c.id },
+        data: { currentRunId: run.id },
       });
       const rr = await tx.ruleResult.create({
         data: {
@@ -335,6 +371,10 @@ async function main(): Promise<void> {
         status: "AWAITING_INFO",
         applicationDate: "2026-08-22",
         declaredTotal: "6200",
+        category: "辦公用品",
+        expenseDate: "2026-08-22",
+        vendor: "3C 賣場",
+        description: "辦公設備採購",
       });
       const run = await tx.reviewRun.create({
         data: {
@@ -349,6 +389,10 @@ async function main(): Promise<void> {
           triggerStage: "RULES",
           confidenceLevel: "HIGH",
         },
+      });
+      await tx.expenseCase.update({
+        where: { id: c.id },
+        data: { currentRunId: run.id },
       });
       const rr = await tx.ruleResult.create({
         data: {
@@ -384,6 +428,10 @@ async function main(): Promise<void> {
         applicationDate: "2026-08-25",
         declaredTotal: "12000",
         currency: "USD",
+        category: "差旅費",
+        expenseDate: "2026-08-20",
+        vendor: "Overseas Hotel",
+        description: "國外出差住宿",
       });
       const run = await tx.reviewRun.create({
         data: {
@@ -399,6 +447,10 @@ async function main(): Promise<void> {
           confidenceLevel: "NONE",
           abstainReason: "UNSUPPORTED_CURRENCY",
         },
+      });
+      await tx.expenseCase.update({
+        where: { id: c.id },
+        data: { currentRunId: run.id },
       });
       const rr = await tx.ruleResult.create({
         data: {

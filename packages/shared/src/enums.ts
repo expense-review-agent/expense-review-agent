@@ -46,12 +46,14 @@ export const caseStatusSchema = z.enum([
 export type CaseStatus = z.infer<typeof caseStatusSchema>;
 
 /// 一致性徽章（由 finalAction 與 agentActionAtDecision 計算後固化寫入）
+/// 算式見 domain/disposition.ts 的 deriveConsistencyFlag()——那裡是唯一實作。
 export const consistencyFlagSchema = z.enum([
   "CONSISTENT",
   "OVERRIDDEN",
   "HUMAN_ASSUMED",
   "ESCALATED",
   "REASON_MISSING",
+  "PENDING_DECISION",
 ]);
 export type ConsistencyFlag = z.infer<typeof consistencyFlagSchema>;
 

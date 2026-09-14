@@ -216,17 +216,23 @@ enum ReviewerAction {
 
 /// 一致性標記（M1-U2 徽章）。寫入 Disposition 時計算並固化，勿於 UI 端即時重算。
 ///
+///   final = null（reviewer 保留待處理）                  → PENDING_DECISION
+///   agentAction = null 且 final ≠ null                  → HUMAN_ASSUMED  （理由必填）
 ///   agentAction ≠ MANUAL_REVIEW 且 final = agentAction  → CONSISTENT
 ///   agentAction ≠ MANUAL_REVIEW 且 final ≠ agentAction  → OVERRIDDEN     （理由必填）
 ///   agentAction = MANUAL_REVIEW 且 final ≠ MANUAL_REVIEW → HUMAN_ASSUMED  （理由必填）
 ///   agentAction = MANUAL_REVIEW 且 final = MANUAL_REVIEW → ESCALATED
 ///   應有理由而缺失                                        → REASON_MISSING
+///
+/// 唯一實作在 packages/shared/src/domain/disposition.ts 的 deriveConsistencyFlag()。
+/// 前後端都 import 那一份，不得各自實作（CLAUDE.md 反模式第一條）。
 enum ConsistencyFlag {
   CONSISTENT // 綠：最終結論 = Agent 建議
   OVERRIDDEN // 紫：Agent 有明確結論且被推翻
   HUMAN_ASSUMED // 藍：Agent 退讓未下結論，由人承擔判斷
   ESCALATED // 灰：雙方皆未下結論，轉呈主管
   REASON_MISSING // 紅：應有理由卻缺失，不得靜默通過稽核
+  PENDING_DECISION // 白：雙方皆未下結論且案件留在待審（HOLD），理由非必填
 }
 
 /// 主管稽核動作，對齊 prototype 並補上 M1-U2 AC6 的複核標記。
