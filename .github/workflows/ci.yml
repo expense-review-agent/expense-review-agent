@@ -22,6 +22,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Prisma client 與 shared 的 dist 都不進版控；沒有它們，型別會退化成 any，
+      # typescript-eslint 的 no-unsafe-* 規則會整片報錯。
+      - name: Generate Prisma client
+        run: pnpm --filter @expense-review-agent/api prisma:generate
+
+      - name: Build shared package
+        run: pnpm --filter @expense-review-agent/shared build
+
       - name: Lint
         run: pnpm lint
 
