@@ -43,6 +43,9 @@ export const caseListItemSchema = z.object({
   currency: z.string(),
   expenseDate: z.string().nullable(), // ISO date (YYYY-MM-DD)
   status: classificationSchema.or(caseStatusSchema),
+  /// 案件流程狀態（QUEUED / AWAITING_INFO / DISPOSED ...），與上方 Agent 分類分開。
+  /// 前端依此決定是否顯示處置按鈕。
+  caseStatus: caseStatusSchema,
   recommendedAction: recommendedActionSchema.nullable(),
 });
 export type CaseListItem = z.infer<typeof caseListItemSchema>;
@@ -80,6 +83,8 @@ export const caseDetailSchema = z.object({
   caseNumber: z.string(),
   summary: z.string(),
   status: classificationSchema.or(caseStatusSchema),
+  /// 案件流程狀態，與 Agent 分類分開（見 caseListItemSchema）。
+  caseStatus: caseStatusSchema,
   applicant: z.object({
     name: z.string(),
     department: z.string().nullable(),

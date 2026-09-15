@@ -1,0 +1,294 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#f0f2f5;font-family:system-ui,-apple-system,sans-serif;color:#1a1a2e;font-size:13px}
+
+.topbar{background:#1a1a2e;color:#fff;padding:0 20px;height:48px;display:flex;align-items:center;justify-content:space-between}
+.topbar-logo{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}
+.topbar-right{display:flex;align-items:center;gap:12px;font-size:12px;color:#a0a3b1}
+.avatar{width:26px;height:26px;border-radius:50%;background:#6c5ce7;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:600}
+
+.wrap{display:flex;min-height:calc(100vh - 48px)}
+.side{width:190px;background:#fff;border-right:1px solid #e8e8ee;padding:14px 0;flex-shrink:0}
+.side-label{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#aaa;padding:0 14px;margin-bottom:6px;font-weight:600}
+.side-item{display:flex;align-items:center;gap:8px;padding:7px 14px;font-size:12px;color:#555;border-radius:6px;margin:2px 6px;cursor:default;transition:background .15s}
+.side-item:hover{background:#f5f5fa}
+.side-item.on{background:#eef0ff;color:#6c5ce7;font-weight:600}
+.side-item.off{color:#ccc;cursor:not-allowed}
+.side-item.off:hover{background:transparent}
+.side-item svg{width:14px;height:14px;flex-shrink:0}
+.side-soon{font-size:9px;color:#ccc;margin-left:auto}
+.content{flex:1;padding:18px 22px;overflow-y:auto}
+
+.pg-title{font-size:17px;font-weight:700}
+.pg-sub{font-size:11px;color:#888;margin-top:2px}
+
+.stats{display:flex;gap:10px;margin:14px 0}
+.st{flex:1;background:#fff;border-radius:10px;padding:12px 14px;border:1px solid #e8e8ee}
+.st-label{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:.05em;font-weight:500}
+.st-val{font-size:22px;font-weight:700;font-family:"SF Mono",monospace;margin-top:3px}
+.st-tag{display:inline-block;font-size:9px;padding:2px 6px;border-radius:4px;margin-top:3px;font-weight:600}
+.st.c-t .st-val{color:#1a1a2e}
+.st.c-n .st-val{color:#27ae60}.st.c-n .st-tag{background:#e8f8ef;color:#27ae60}
+.st.c-m .st-val{color:#f39c12}.st.c-m .st-tag{background:#fef9e7;color:#e67e22}
+.st.c-e .st-val{color:#e74c3c}.st.c-e .st-tag{background:#fdedec;color:#e74c3c}
+.st.c-h .st-val{color:#7f8c8d}.st.c-h .st-tag{background:#f0f0f0;color:#7f8c8d}
+
+input[type="radio"]{display:none}
+.filters{display:flex;gap:5px;margin-bottom:12px}
+.fb{display:inline-flex;align-items:center;gap:4px;padding:4px 11px;border-radius:16px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid #ddd;background:#fff;color:#666;transition:all .15s}
+.fb:hover{border-color:#aaa}
+.fc{font-family:monospace;font-size:10px;background:#f0f0f0;padding:1px 5px;border-radius:8px}
+#fa:checked~.content .fb[for="fa"],#fn:checked~.content .fb[for="fn"],#fm:checked~.content .fb[for="fm"],#fe:checked~.content .fb[for="fe"],#fh:checked~.content .fb[for="fh"]{background:#1a1a2e;color:#fff;border-color:#1a1a2e}
+#fa:checked~.content .fb[for="fa"] .fc,#fn:checked~.content .fb[for="fn"] .fc,#fm:checked~.content .fb[for="fm"] .fc,#fe:checked~.content .fb[for="fe"] .fc,#fh:checked~.content .fb[for="fh"] .fc{background:rgba(255,255,255,.2);color:#fff}
+
+.tbl{background:#fff;border-radius:10px;border:1px solid #e8e8ee;overflow:hidden}
+.th,.tr{display:grid;grid-template-columns:80px 1.3fr .7fr 90px 70px 100px 90px;padding:9px 14px;align-items:center;font-size:12px}
+.th{background:#fafafa;border-bottom:1px solid #eee;font-size:9px;color:#999;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.tr{border-bottom:1px solid #f5f5f5;cursor:pointer;transition:background .12s}
+.tr:hover{background:#f8f8fc}
+.tr:last-child{border-bottom:none}
+.cid{font-family:monospace;font-weight:600;color:#6c5ce7;font-size:11px}
+.cn{font-weight:500}
+.ca{font-family:monospace;font-weight:600}
+.cd{color:#888;font-size:11px}
+.badge{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:600}
+.badge.n{background:#e8f8ef;color:#1e8449}.badge.m{background:#fef9e7;color:#d68910}.badge.e{background:#fdedec;color:#c0392b}.badge.h{background:#f0f0f0;color:#7f8c8d}
+.dot{width:5px;height:5px;border-radius:50%}
+.dot.n{background:#27ae60}.dot.m{background:#f39c12}.dot.e{background:#e74c3c}.dot.h{background:#95a5a6}
+.act{font-size:10px;padding:2px 7px;border-radius:5px;font-weight:500}
+.act.p{background:#e8f8ef;color:#1e8449}.act.s{background:#fef9e7;color:#d68910}.act.r{background:#fdedec;color:#c0392b}.act.esc{background:#f0f0f0;color:#7f8c8d}
+
+#fa:checked~.content .tr{display:grid}
+#fn:checked~.content .tr{display:none}#fn:checked~.content .tr.rn{display:grid}
+#fm:checked~.content .tr{display:none}#fm:checked~.content .tr.rm{display:grid}
+#fe:checked~.content .tr{display:none}#fe:checked~.content .tr.re{display:grid}
+#fh:checked~.content .tr{display:none}#fh:checked~.content .tr.rh{display:grid}
+
+.ov{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.32);z-index:100}
+.pn{display:none;position:fixed;top:0;right:0;width:600px;height:100vh;background:#fff;z-index:101;overflow-y:auto;box-shadow:-4px 0 20px rgba(0,0,0,.1)}
+#d1:checked~.o1,#d2:checked~.o2,#d3:checked~.o3,#d4:checked~.o4,#d5:checked~.o5,#d6:checked~.o6,#d7:checked~.o7{display:block}
+#d1:checked~.p1,#d2:checked~.p2,#d3:checked~.p3,#d4:checked~.p4,#d5:checked~.p5,#d6:checked~.p6,#d7:checked~.p7{display:block}
+
+.ph{padding:16px 20px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:flex-start}
+.ph-t{font-size:14px;font-weight:700}
+.ph-x{cursor:pointer;font-size:11px;color:#999;background:#f5f5f5;padding:5px 12px;border-radius:6px}
+.ph-x:hover{background:#eee}
+.pb{padding:16px 20px}
+.sec{margin-bottom:16px}
+.sec-t{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#999;margin-bottom:7px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.fd{background:#fafafa;border-radius:6px;padding:8px 11px}
+.fd-l{font-size:8px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:1px}
+.fd-v{font-size:12px;font-weight:600;color:#1a1a2e}
+.fd-v.mono{font-family:monospace}
+.chk{list-style:none}
+.chk li{display:flex;align-items:flex-start;gap:6px;padding:6px 0;border-bottom:1px solid #f5f5f5;font-size:11px;line-height:1.5}
+.chk li:last-child{border-bottom:none}
+.ci{width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.ci.ok{background:#e8f8ef;color:#27ae60}.ci.no{background:#fdedec;color:#e74c3c}.ci.wn{background:#fef9e7;color:#f39c12}.ci.inf{background:#eef0ff;color:#6c5ce7}
+.ci svg{width:9px;height:9px}
+.ab{border-radius:8px;padding:12px;margin-bottom:8px}
+.ab.an{background:#e8f8ef;border:1px solid #c8e6c9}.ab.am{background:#fef9e7;border:1px solid #fdeaa8}.ab.ae{background:#fdedec;border:1px solid #f5b7b1}.ab.ah{background:#f5f5f5;border:1px solid #ddd}
+.ab-l{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+.ab-l.ln{color:#1e8449}.ab-l.lm{color:#d68910}.ab-l.le{color:#c0392b}.ab-l.lh{color:#7f8c8d}
+.ab-t{font-size:11px;line-height:1.6;color:#333}
+.ar{font-size:10px;color:#666;background:rgba(255,255,255,.7);padding:6px 9px;border-radius:5px;margin-top:6px;border-left:3px solid}
+.ar.rn{border-color:#27ae60}.ar.rm{border-color:#f39c12}.ar.re{border-color:#e74c3c}.ar.rh{border-color:#95a5a6}
+.btns{display:flex;gap:7px;margin-top:12px;flex-wrap:wrap}
+.btn{padding:8px 14px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:none;transition:all .15s}
+.btn.pri{background:#6c5ce7;color:#fff}.btn.pri:hover{background:#5a4bd1}
+.btn.sec2{background:#f5f5f5;color:#555;border:1px solid #ddd}.btn.sec2:hover{background:#eee}
+.btn.dan{background:#fdedec;color:#c0392b;border:1px solid #f5b7b1}.btn.dan:hover{background:#fad7d4}
+.red{color:#e74c3c;font-weight:700}
+.notif{margin-top:8px;background:#fef9e7;border-radius:6px;padding:9px;border:1px dashed #f39c12;font-size:10px;color:#666;line-height:1.6}
+.notif-t{font-size:9px;font-weight:700;color:#d68910;margin-bottom:3px}
+.rel{background:#f5f5f5;border-radius:6px;padding:9px;border:1px solid #ddd;margin-top:6px}
+.rel-t{font-size:9px;font-weight:700;color:#7f8c8d;margin-bottom:5px}
+.rel-row{display:flex;justify-content:space-between;align-items:center;font-size:11px}
+.ck{fill:none;stroke:currentColor;stroke-width:2}
+.xx{fill:none;stroke:currentColor;stroke-width:2}
+.ww{fill:none;stroke:currentColor;stroke-width:2}
+
+@media(prefers-reduced-motion:no-preference){
+.st{animation:fu .4s ease-out both}.st:nth-child(2){animation-delay:.04s}.st:nth-child(3){animation-delay:.08s}.st:nth-child(4){animation-delay:.12s}.st:nth-child(5){animation-delay:.16s}
+.tr{animation:fu .3s ease-out both}.tr:nth-child(2){animation-delay:.03s}.tr:nth-child(3){animation-delay:.06s}.tr:nth-child(4){animation-delay:.09s}.tr:nth-child(5){animation-delay:.12s}.tr:nth-child(6){animation-delay:.15s}.tr:nth-child(7){animation-delay:.18s}.tr:nth-child(8){animation-delay:.21s}
+@keyframes fu{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-logo"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 14l2 2 4-4"/></svg>AI 費用單據初審 Agent</div>
+  <div class="topbar-right"><span>2026 年 9 月</span><div class="avatar">林</div></div>
+</div>
+
+<input type="radio" name="ft" id="fa" checked><input type="radio" name="ft" id="fn"><input type="radio" name="ft" id="fm"><input type="radio" name="ft" id="fe"><input type="radio" name="ft" id="fh">
+<input type="radio" name="dp" id="d0" checked><input type="radio" name="dp" id="d1"><input type="radio" name="dp" id="d2"><input type="radio" name="dp" id="d3"><input type="radio" name="dp" id="d4"><input type="radio" name="dp" id="d5"><input type="radio" name="dp" id="d6"><input type="radio" name="dp" id="d7">
+
+<label class="ov o1" for="d0"></label><label class="ov o2" for="d0"></label><label class="ov o3" for="d0"></label><label class="ov o4" for="d0"></label><label class="ov o5" for="d0"></label><label class="ov o6" for="d0"></label><label class="ov o7" for="d0"></label>
+
+<!-- P1: EXP-0042 NORMAL 餐費 -->
+<div class="pn p1">
+<div class="ph"><div><div class="ph-t">EXP-2026-0042 ｜ 客戶午餐會議餐費</div><div style="margin-top:4px"><span class="badge n"><span class="dot n"></span>NORMAL</span></div></div><label class="ph-x" for="d0">✕ 關閉</label></div>
+<div class="pb">
+<div class="sec"><div class="sec-t">申請資訊</div><div class="g2"><div class="fd"><div class="fd-l">申請人</div><div class="fd-v">王小明</div></div><div class="fd"><div class="fd-l">部門</div><div class="fd-v">業務一部</div></div><div class="fd"><div class="fd-l">申請金額</div><div class="fd-v mono">NT$ 800</div></div><div class="fd"><div class="fd-l">費用類別</div><div class="fd-v">餐費</div></div><div class="fd"><div class="fd-l">消費日期</div><div class="fd-v">2026-08-20</div></div><div class="fd"><div class="fd-l">申請日期</div><div class="fd-v">2026-08-22</div></div></div></div>
+<div class="sec"><div class="sec-t">Agent 檢查結果</div><ul class="chk">
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>金額比對一致</strong> — 收據 NT$800 = 申請 NT$800</span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>日期一致</strong> — 收據 2026-08-20 = 申請消費日期</span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>未超過額度</strong> — 餐費上限 NT$1,000，本筆 NT$800</span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>申請期限內</strong> — 消費後 2 天內提出（限 30 天）</span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>附件完整</strong> — 收據已附，類別與用途已填</span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>無重複申報</strong> — 單據號碼 R-20260820-0371 無歷史紀錄</span></li>
+</ul></div>
+<div class="sec"><div class="sec-t">Agent 建議</div><div class="ab an"><div class="ab-l ln">✅ 建議通過</div><div class="ab-t">本筆費用資料完整，金額、日期、類別與收據一致，符合所有費用規範，無異常或重複紀錄。</div><div class="ar rn"><strong>適用規範：</strong>R-02 單筆餐費上限 NT$1,000 — 本筆 NT$800 未超額；R-04 須於 30 天內提出 — 本筆 2 天內提出</div></div></div>
+<div class="btns"><div class="btn pri">✓ 確認通過</div><div class="btn sec2">✎ 覆寫判斷</div><div class="btn sec2">↑ 升級主管</div></div>
+</div></div>
+
+<!-- P2: EXP-0043 NORMAL 交通 -->
+<div class="pn p2">
+<div class="ph"><div><div class="ph-t">EXP-2026-0043 ｜ 高鐵來回車票（台北↔台中）</div><div style="margin-top:4px"><span class="badge n"><span class="dot n"></span>NORMAL</span></div></div><label class="ph-x" for="d0">✕ 關閉</label></div>
+<div class="pb">
+<div class="sec"><div class="sec-t">申請資訊</div><div class="g2"><div class="fd"><div class="fd-l">申請人</div><div class="fd-v">陳美玲</div></div><div class="fd"><div class="fd-l">部門</div><div class="fd-v">行銷部</div></div><div class="fd"><div class="fd-l">申請金額</div><div class="fd-v mono">NT$ 1,490</div></div><div class="fd"><div class="fd-l">費用類別</div><div class="fd-v">交通費</div></div><div class="fd"><div class="fd-l">消費日期</div><div class="fd-v">2026-08-18</div></div><div class="fd"><div class="fd-l">申請日期</div><div class="fd-v">2026-08-19</div></div></div></div>
+<div class="sec"><div class="sec-t">Agent 檢查結果</div><ul class="chk">
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>金額比對一致</strong> — 車票 NT$1,490 = 申請金額</span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>日期一致</strong> — 車票日期 2026-08-18 = 申請消費日期</span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>未超過額度</strong> — 交通費上限 NT$1,500，本筆 NT$1,490</span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>申請期限內</strong> — 消費後 1 天內提出</span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>附件完整</strong> — 高鐵電子票證已附</span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>無重複申報</strong></span></li>
+</ul></div>
+<div class="sec"><div class="sec-t">Agent 建議</div><div class="ab an"><div class="ab-l ln">✅ 建議通過</div><div class="ab-t">交通費申請資料完整，金額未超額，附件齊全，無異常紀錄。</div><div class="ar rn"><strong>適用規範：</strong>R-01 單筆交通費上限 NT$1,500 — 本筆 NT$1,490 未超額</div></div></div>
+<div class="btns"><div class="btn pri">✓ 確認通過</div><div class="btn sec2">✎ 覆寫判斷</div><div class="btn sec2">↑ 升級主管</div></div>
+</div></div>
+
+<!-- P3: EXP-0044 EXCEPTION 金額不一致 -->
+<div class="pn p3">
+<div class="ph"><div><div class="ph-t">EXP-2026-0044 ｜ 客戶拜訪計程車費</div><div style="margin-top:4px"><span class="badge e"><span class="dot e"></span>EXCEPTION</span></div></div><label class="ph-x" for="d0">✕ 關閉</label></div>
+<div class="pb">
+<div class="sec"><div class="sec-t">申請資訊</div><div class="g2"><div class="fd"><div class="fd-l">申請人</div><div class="fd-v">張志豪</div></div><div class="fd"><div class="fd-l">部門</div><div class="fd-v">業務二部</div></div><div class="fd"><div class="fd-l">申請金額</div><div class="fd-v mono red">NT$ 1,200</div></div><div class="fd"><div class="fd-l">費用類別</div><div class="fd-v">交通費</div></div><div class="fd"><div class="fd-l">消費日期</div><div class="fd-v">2026-08-15</div></div><div class="fd"><div class="fd-l">申請日期</div><div class="fd-v">2026-08-25</div></div></div></div>
+<div class="sec"><div class="sec-t">Agent 檢查結果</div><ul class="chk">
+<li><span class="ci no"><svg viewBox="0 0 12 12" class="xx"><path d="M3 3l6 6M9 3l-6 6"/></svg></span><span><strong class="red">金額不一致</strong> — 收據 <strong class="red">NT$1,500</strong> ≠ 申請 <strong class="red">NT$1,200</strong>，差異 NT$300</span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>日期一致</strong></span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>附件已附</strong> — 計程車收據</span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>無重複申報</strong></span></li>
+</ul></div>
+<div class="sec"><div class="sec-t">Agent 建議</div><div class="ab ae"><div class="ab-l le">🔴 建議人工審核</div><div class="ab-t">申請金額（NT$1,200）與收據金額（NT$1,500）不一致，差異 NT$300。需人工確認是否為填寫錯誤或其他原因。</div><div class="ar re"><strong>適用規範：</strong>申請金額須與單據金額一致，差異案件須由人工確認後決定核准金額。</div></div></div>
+<div class="btns"><div class="btn dan">⚠ 退回申請</div><div class="btn sec2">✎ 覆寫判斷</div><div class="btn sec2">↑ 升級主管</div></div>
+</div></div>
+
+<!-- P4: EXP-0045 EXCEPTION 超額住宿 -->
+<div class="pn p4">
+<div class="ph"><div><div class="ph-t">EXP-2026-0045 ｜ 台中出差住宿費</div><div style="margin-top:4px"><span class="badge e"><span class="dot e"></span>EXCEPTION</span></div></div><label class="ph-x" for="d0">✕ 關閉</label></div>
+<div class="pb">
+<div class="sec"><div class="sec-t">申請資訊</div><div class="g2"><div class="fd"><div class="fd-l">申請人</div><div class="fd-v">李雅婷</div></div><div class="fd"><div class="fd-l">部門</div><div class="fd-v">專案管理部</div></div><div class="fd"><div class="fd-l">申請金額</div><div class="fd-v mono red">NT$ 4,500</div></div><div class="fd"><div class="fd-l">費用類別</div><div class="fd-v">住宿費</div></div><div class="fd"><div class="fd-l">消費日期</div><div class="fd-v">2026-08-10</div></div><div class="fd"><div class="fd-l">申請日期</div><div class="fd-v">2026-08-12</div></div></div></div>
+<div class="sec"><div class="sec-t">Agent 檢查結果</div><ul class="chk">
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>金額比對一致</strong> — 發票 = 申請 NT$4,500</span></li>
+<li><span class="ci no"><svg viewBox="0 0 12 12" class="xx"><path d="M3 3l6 6M9 3l-6 6"/></svg></span><span><strong class="red">超過住宿額度</strong> — 每晚上限 NT$3,000，本筆 NT$4,500，超額 NT$1,500</span></li>
+<li><span class="ci wn"><svg viewBox="0 0 12 12" class="ww"><path d="M6 3v4M6 9v0" stroke-linecap="round"/></svg></span><span><strong style="color:#f39c12">需額外核准</strong> — 超額住宿費需副總核准</span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>附件完整</strong> — 飯店發票已附</span></li>
+</ul></div>
+<div class="sec"><div class="sec-t">Agent 建議</div><div class="ab ae"><div class="ab-l le">🔴 建議人工審核</div><div class="ab-t">住宿費 NT$4,500 超過每晚上限 NT$3,000，超額 NT$1,500。依規範需取得副總核准。</div><div class="ar re"><strong>適用規範：</strong>R-03 住宿費每晚上限 NT$3,000，超過需副總核准</div></div></div>
+<div class="btns"><div class="btn sec2">↑ 升級副總核准</div><div class="btn sec2">✎ 覆寫判斷</div><div class="btn dan">⚠ 退回申請</div></div>
+</div></div>
+
+<!-- P5: EXP-0046 MISSING 缺發票 -->
+<div class="pn p5">
+<div class="ph"><div><div class="ph-t">EXP-2026-0046 ｜ 辦公設備採購</div><div style="margin-top:4px"><span class="badge m"><span class="dot m"></span>MISSING</span></div></div><label class="ph-x" for="d0">✕ 關閉</label></div>
+<div class="pb">
+<div class="sec"><div class="sec-t">申請資訊</div><div class="g2"><div class="fd"><div class="fd-l">申請人</div><div class="fd-v">黃建宏</div></div><div class="fd"><div class="fd-l">部門</div><div class="fd-v">研發部</div></div><div class="fd"><div class="fd-l">申請金額</div><div class="fd-v mono">NT$ 6,200</div></div><div class="fd"><div class="fd-l">費用類別</div><div class="fd-v">辦公用品</div></div><div class="fd"><div class="fd-l">消費日期</div><div class="fd-v">2026-08-22</div></div><div class="fd"><div class="fd-l">申請日期</div><div class="fd-v">2026-08-25</div></div></div></div>
+<div class="sec"><div class="sec-t">Agent 檢查結果</div><ul class="chk">
+<li><span class="ci wn"><svg viewBox="0 0 12 12" class="ww"><path d="M6 3v4M6 9v0" stroke-linecap="round"/></svg></span><span><strong style="color:#f39c12">缺正式發票</strong> — 僅附收據，金額 ≥ NT$5,000 須附正式發票</span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>收據金額一致</strong> — NT$6,200</span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>申請期限內</strong></span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>無重複申報</strong></span></li>
+</ul></div>
+<div class="sec"><div class="sec-t">Agent 建議</div><div class="ab am"><div class="ab-l lm">📎 建議補件</div><div class="ab-t">本筆金額 NT$6,200 超過 NT$5,000 門檻，依規範須附正式發票，目前僅附收據。請申請人補附正式發票後重新送審。</div><div class="ar rm"><strong>適用規範：</strong>R-05 單筆金額 ≥ NT$5,000 須附正式發票</div></div>
+<div class="notif"><div class="notif-t">📧 自動補件通知預覽</div>收件人：黃建宏<br>主旨：費用申請 EXP-2026-0046 需補件通知<br>內容：您的辦公設備採購費用申請（NT$6,200）需補附正式發票。依公司規範 R-05，單筆 ≥ NT$5,000 須附正式發票。請於 7 個工作天內補件。</div></div>
+<div class="btns"><div class="btn pri">📧 發送補件通知</div><div class="btn sec2">✎ 覆寫判斷</div><div class="btn sec2">↑ 升級主管</div></div>
+</div></div>
+
+<!-- P6: EXP-0047 MISSING 逾期 -->
+<div class="pn p6">
+<div class="ph"><div><div class="ph-t">EXP-2026-0047 ｜ 部門聚餐費用</div><div style="margin-top:4px"><span class="badge m"><span class="dot m"></span>MISSING</span></div></div><label class="ph-x" for="d0">✕ 關閉</label></div>
+<div class="pb">
+<div class="sec"><div class="sec-t">申請資訊</div><div class="g2"><div class="fd"><div class="fd-l">申請人</div><div class="fd-v">林佳穎</div></div><div class="fd"><div class="fd-l">部門</div><div class="fd-v">人資部</div></div><div class="fd"><div class="fd-l">申請金額</div><div class="fd-v mono">NT$ 2,800</div></div><div class="fd"><div class="fd-l">費用類別</div><div class="fd-v">餐費</div></div><div class="fd"><div class="fd-l">消費日期</div><div class="fd-v red">2026-07-15</div></div><div class="fd"><div class="fd-l">申請日期</div><div class="fd-v">2026-08-28</div></div></div></div>
+<div class="sec"><div class="sec-t">Agent 檢查結果</div><ul class="chk">
+<li><span class="ci no"><svg viewBox="0 0 12 12" class="xx"><path d="M3 3l6 6M9 3l-6 6"/></svg></span><span><strong class="red">超過申請期限</strong> — 消費日 7/15 至申請日 8/28 已超過 <strong class="red">44 天</strong>（上限 30 天）</span></li>
+<li><span class="ci wn"><svg viewBox="0 0 12 12" class="ww"><path d="M6 3v4M6 9v0" stroke-linecap="round"/></svg></span><span><strong style="color:#f39c12">需特別簽核</strong> — 逾期申請需部門主管特別簽核</span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>金額比對一致</strong> — NT$2,800</span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>附件完整</strong> — 餐廳收據已附</span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>無重複申報</strong></span></li>
+</ul></div>
+<div class="sec"><div class="sec-t">Agent 建議</div><div class="ab am"><div class="ab-l lm">📎 建議補件（特別簽核）</div><div class="ab-t">本筆申請已超過 30 天期限（實際 44 天），依規範需取得部門主管特別簽核後方可繼續審核。</div><div class="ar rm"><strong>適用規範：</strong>R-04 費用申請須於消費日起 30 天內提出 — 逾期需特別簽核</div></div></div>
+<div class="btns"><div class="btn pri">📧 通知主管簽核</div><div class="btn sec2">✎ 覆寫判斷</div><div class="btn sec2">↑ 升級主管</div></div>
+</div></div>
+
+<!-- P7: EXP-0048 HUMAN 疑似拆單 -->
+<div class="pn p7">
+<div class="ph"><div><div class="ph-t">EXP-2026-0048 ｜ 文具用品採購（1/2）</div><div style="margin-top:4px"><span class="badge h"><span class="dot h"></span>HUMAN</span></div></div><label class="ph-x" for="d0">✕ 關閉</label></div>
+<div class="pb">
+<div class="sec"><div class="sec-t">申請資訊</div><div class="g2"><div class="fd"><div class="fd-l">申請人</div><div class="fd-v">周大偉</div></div><div class="fd"><div class="fd-l">部門</div><div class="fd-v">行政部</div></div><div class="fd"><div class="fd-l">申請金額</div><div class="fd-v mono">NT$ 900</div></div><div class="fd"><div class="fd-l">費用類別</div><div class="fd-v">辦公用品</div></div><div class="fd"><div class="fd-l">消費日期</div><div class="fd-v">2026-08-25</div></div><div class="fd"><div class="fd-l">申請日期</div><div class="fd-v">2026-08-26</div></div></div></div>
+<div class="sec"><div class="sec-t">Agent 檢查結果</div><ul class="chk">
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>金額比對一致</strong> — NT$900</span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>未超過單筆額度</strong></span></li>
+<li><span class="ci ok"><svg viewBox="0 0 12 12" class="ck"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span><span><strong>附件完整</strong></span></li>
+<li><span class="ci inf"><svg viewBox="0 0 12 12" class="ww"><path d="M6 3v4M6 9v0" stroke-linecap="round"/></svg></span><span><strong style="color:#6c5ce7">⚠ 疑似拆單</strong> — 同日同供應商「大同文具行」另一筆 NT$900（EXP-0049），合計 NT$1,800</span></li>
+</ul></div>
+<div class="sec"><div class="sec-t">Agent 分析</div><div class="ab ah"><div class="ab-l lh">⚪ 轉交人工判斷</div>
+<div class="ab-t"><strong>✅ 已完成檢查：</strong><br>• 個別金額未超額 ✓　• 附件完整 ✓　• 期限內 ✓　• 無歷史重複 ✓</div>
+<div class="ab-t" style="margin-top:6px"><strong>❓ 無法確定：</strong><br>• 兩筆是否為同一採購的刻意拆分<br>• 合計 NT$1,800 是否規避 NT$1,500 門檻<br>• 是否有合理業務原因分次採購</div>
+<div class="ab-t" style="margin-top:6px"><strong>💡 建議：</strong><br>此案涉及意圖判斷，超出 Agent 能力。建議 Reviewer 綜合業務情境後決定。</div>
+<div class="ar rh"><strong>適用規範：</strong>R-06 同一供應商同日不得拆分為多筆申請 — 疑似拆單轉人工</div></div></div>
+<div class="sec"><div class="rel"><div class="rel-t">📋 關聯案件</div><div class="rel-row"><span><span style="font-family:monospace;color:#6c5ce7;font-weight:600">EXP-2026-0049</span> ｜ 文具用品採購（2/2）</span><span style="font-family:monospace;font-weight:600">NT$ 900</span><span class="badge h"><span class="dot h"></span>HUMAN</span></div></div></div>
+<div class="btns"><div class="btn pri">合併審核</div><div class="btn sec2">分別通過</div><div class="btn dan">⚠ 退回</div><div class="btn sec2">↑ 升級主管</div></div>
+</div></div>
+
+<div class="wrap">
+<div class="side">
+<div style="padding:0 14px;margin-bottom:12px"><div class="side-label">主選單</div></div>
+<div class="side-item on"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>案件總覽</div>
+<div class="side-item"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h12M2 12h8"/></svg>費用規範</div>
+<div class="side-item off"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 2v12M12 2v12M2 8h12"/></svg>審核紀錄<span class="side-soon">即將推出</span></div>
+<div class="side-item off"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/></svg>統計報表<span class="side-soon">即將推出</span></div>
+</div>
+
+<div class="content">
+<div style="margin-bottom:14px"><div class="pg-title">案件總覽</div><div class="pg-sub">2026 年 8 月份費用申請 — Agent 已完成初審分類</div></div>
+
+<div class="stats">
+<div class="st c-t"><div class="st-label">總案件數</div><div class="st-val">7</div><div class="st-tag" style="background:#eef0ff;color:#6c5ce7">本月待審</div></div>
+<div class="st c-n"><div class="st-label">Normal</div><div class="st-val">2</div><div class="st-tag">建議通過</div></div>
+<div class="st c-m"><div class="st-label">Missing</div><div class="st-val">2</div><div class="st-tag">建議補件</div></div>
+<div class="st c-e"><div class="st-label">Exception</div><div class="st-val">2</div><div class="st-tag">建議人工審核</div></div>
+<div class="st c-h"><div class="st-label">Human</div><div class="st-val">1</div><div class="st-tag">轉交人工</div></div>
+</div>
+
+<div class="filters">
+<label class="fb" for="fa">全部 <span class="fc">7</span></label>
+<label class="fb" for="fn">🟢 Normal <span class="fc">2</span></label>
+<label class="fb" for="fm">🟡 Missing <span class="fc">2</span></label>
+<label class="fb" for="fe">🔴 Exception <span class="fc">2</span></label>
+<label class="fb" for="fh">⚪ Human <span class="fc">1</span></label>
+</div>
+
+<div class="tbl">
+<div class="th"><span>案件編號</span><span>申請人 / 說明</span><span>費用類別</span><span>金額</span><span>日期</span><span>狀態</span><span>建議</span></div>
+<label class="tr rn" for="d1"><span class="cid">EXP-0042</span><span class="cn">王小明 ｜ 客戶午餐會議餐費</span><span>餐費</span><span class="ca">NT$ 800</span><span class="cd">08-20</span><span><span class="badge n"><span class="dot n"></span>NORMAL</span></span><span><span class="act p">建議通過</span></span></label>
+<label class="tr rn" for="d2"><span class="cid">EXP-0043</span><span class="cn">陳美玲 ｜ 高鐵來回車票</span><span>交通費</span><span class="ca">NT$ 1,490</span><span class="cd">08-18</span><span><span class="badge n"><span class="dot n"></span>NORMAL</span></span><span><span class="act p">建議通過</span></span></label>
+<label class="tr re" for="d3"><span class="cid">EXP-0044</span><span class="cn">張志豪 ｜ 客戶拜訪計程車費</span><span>交通費</span><span class="ca red">NT$ 1,200</span><span class="cd">08-15</span><span><span class="badge e"><span class="dot e"></span>EXCEPTION</span></span><span><span class="act r">人工審核</span></span></label>
+<label class="tr re" for="d4"><span class="cid">EXP-0045</span><span class="cn">李雅婷 ｜ 台中出差住宿費</span><span>住宿費</span><span class="ca red">NT$ 4,500</span><span class="cd">08-10</span><span><span class="badge e"><span class="dot e"></span>EXCEPTION</span></span><span><span class="act r">人工審核</span></span></label>
+<label class="tr rm" for="d5"><span class="cid">EXP-0046</span><span class="cn">黃建宏 ｜ 辦公設備採購</span><span>辦公用品</span><span class="ca">NT$ 6,200</span><span class="cd">08-22</span><span><span class="badge m"><span class="dot m"></span>MISSING</span></span><span><span class="act s">建議補件</span></span></label>
+<label class="tr rm" for="d6"><span class="cid">EXP-0047</span><span class="cn">林佳穎 ｜ 部門聚餐費用</span><span>餐費</span><span class="ca">NT$ 2,800</span><span class="cd">07-15</span><span><span class="badge m"><span class="dot m"></span>MISSING</span></span><span><span class="act s">建議補件</span></span></label>
+<label class="tr rh" for="d7"><span class="cid">EXP-0048</span><span class="cn">周大偉 ｜ 文具用品採購（1/2）</span><span>辦公用品</span><span class="ca">NT$ 900</span><span class="cd">08-25</span><span><span class="badge h"><span class="dot h"></span>HUMAN</span></span><span><span class="act esc">轉交人工</span></span></label>
+</div>
+</div>
+</div>
+
+</body>
+</html>

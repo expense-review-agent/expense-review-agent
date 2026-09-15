@@ -7,7 +7,10 @@
 //   EXP-2026-2002  EXCEPTION  — R7 duplicate (paired with a REVIEW_CLOSED case)
 //   EXP-2026-2003  MISSING    — R4 missing required invoice, REQUEST_INFO
 //   EXP-2026-2004  HUMAN      — foreign invoice, agent abstains (ABSTAIN)
-// Plus one paired REVIEW_CLOSED reference case (EXP-2026-1043) for R7.
+// Plus one paired REVIEW_CLOSED reference case (EXP-2026-1043) for R7, seeded
+// with a complete closed history (line, receipt, NORMAL run with passing rule
+// results, reviewer disposition, supervisor approval, dated audit trail) so the
+// duplicate evidence on EXP-2026-2002 leads somewhere real.
 //
 // Phase 1: ExtractionSource.STRUCTURED_FIXTURE — NO OCR. Simulated data only.
 //
@@ -28,9 +31,11 @@ async function appendAudit(
   chain: { caseId: string; seq: number; prevHash: string | null },
   type: string,
   payload: Prisma.InputJsonValue,
-  actorLabel = "system:review-engine",
+  opts: { actorLabel?: string; actorId?: string; runId?: string; createdAt?: Date } = {},
 ): Promise<void> {
-  const createdAt = new Date();
+  const actorLabel = opts.actorLabel ?? "system:review-engine";
+  // 歷史案件用固定時間戳記（hash 以此計算），新案件用現在時間。
+  const createdAt = opts.createdAt ?? new Date();
   const seq = chain.seq + 1;
   const hash = computeAuditHash({
     prevHash: chain.prevHash,
@@ -46,6 +51,8 @@ async function appendAudit(
       seq,
       type: type as never,
       actorLabel,
+      actorId: opts.actorId ?? null,
+      runId: opts.runId ?? null,
       payload,
       prevHash: chain.prevHash,
       hash,
@@ -71,7 +78,7 @@ async function main(): Promise<void> {
         role: "REVIEWER",
       },
     });
-    await tx.user.create({
+    const supervisor = await tx.user.create({
       data: {
         organizationId: org.id,
         displayName: "財務主管（模擬）",
@@ -204,7 +211,9 @@ async function main(): Promise<void> {
         applicationDate: new Date("2026-08-05"),
         declaredTotal: new Prisma.Decimal("3500"),
         policyVersionId: policyVersion.id,
-        closedAt: new Date("2026-08-06"),
+        roundCount: 1,
+        submittedAt: new Date("2026-08-05T10:10:00+08:00"),
+        closedAt: new Date("2026-08-06T14:05:01+08:00"),
       },
     });
 
@@ -221,6 +230,7 @@ async function main(): Promise<void> {
       expenseDate?: string;
       vendor?: string;
       description?: string;
+      docNo?: string;
     }) {
       const c = await tx.expenseCase.create({
         data: {
@@ -247,6 +257,7 @@ async function main(): Promise<void> {
           category: opts.category ?? null,
           vendor: opts.vendor ?? null,
           description: opts.description ?? null,
+          docNo: opts.docNo ?? null,
         },
       });
       const chain = { caseId: c.id, seq: 0, prevHash: null as string | null };
@@ -316,6 +327,7 @@ async function main(): Promise<void> {
         expenseDate: "2026-08-05",
         vendor: "餐廳 B",
         description: "客戶餐敘",
+        docNo: "INV-2026-0805-77", // 與參照案件 EXP-2026-1043 相同（R7 疑似重複的依據）
       });
       const run = await tx.reviewRun.create({
         data: {
@@ -476,16 +488,197 @@ async function main(): Promise<void> {
       });
     }
 
-    // Reference case gets its own minimal audit trail so seq chains are valid.
+    // =====================================================================
+    // REFERENCE CASE — EXP-2026-1043, complete closed history (paired with R7)
+    // 2002 的疑似重複證據指向這筆：單號、金額、日期三者相同。歷程依時間順序：
+    //   08-05 建立 → Agent 初審 NORMAL（全數通過）→ 08-06 初審採用建議 → 主管核可結案
+    // =====================================================================
     {
+      const at = (iso: string) => new Date(`${iso}+08:00`);
       const chain = { caseId: refCase.id, seq: 0, prevHash: null as string | null };
-      await appendAudit(tx, chain, "CASE_CREATED", { caseNumber: refCase.caseNumber });
-      await appendAudit(tx, chain, "CASE_STATUS_CHANGED", { to: "REVIEW_CLOSED" });
-    }
 
-    // reviewer is referenced to keep the variable meaningful for future
-    // Disposition seeding; touch it so lint doesn't flag an unused binding.
-    void reviewer;
+      const line = await tx.expenseLine.create({
+        data: {
+          caseId: refCase.id,
+          lineNo: 1,
+          docNo: "INV-2026-0805-77",
+          expenseDate: new Date("2026-08-05"),
+          amount: new Prisma.Decimal("3500"),
+          currency: "TWD",
+          vendor: "餐廳 B",
+          category: "餐費",
+          description: "客戶餐敘",
+        },
+      });
+      const receipt = await tx.receipt.create({
+        data: {
+          caseId: refCase.id,
+          extractionSource: "STRUCTURED_FIXTURE",
+          docNo: "INV-2026-0805-77",
+          issueDate: new Date("2026-08-05"),
+          amount: new Prisma.Decimal("3500"),
+          currency: "TWD",
+          vendor: "餐廳 B",
+          category: "餐費",
+          minConfidenceLevel: "HIGH",
+        },
+      });
+
+      await appendAudit(
+        tx,
+        chain,
+        "CASE_CREATED",
+        { caseNumber: refCase.caseNumber },
+        { createdAt: at("2026-08-05T10:12:00") },
+      );
+
+      const run = await tx.reviewRun.create({
+        data: {
+          caseId: refCase.id,
+          roundNo: 1,
+          status: "SUCCEEDED",
+          policyVersionId: policyVersion.id,
+          policyResolution: "EXACT",
+          engineVersion: ENGINE_VERSION,
+          matchVerdict: "CONSISTENT",
+          declaredCount: 1,
+          receiptCount: 1,
+          sumDifference: new Prisma.Decimal("0"),
+          classification: "NORMAL",
+          recommendedAction: "APPROVE",
+          confidenceLevel: "HIGH",
+          inputSnapshot: {
+            caseNumber: refCase.caseNumber,
+            declaredTotal: "3500",
+            currency: "TWD",
+            lines: [{ lineNo: 1, docNo: "INV-2026-0805-77", amount: "3500", date: "2026-08-05" }],
+            receipts: [{ docNo: "INV-2026-0805-77", amount: "3500", date: "2026-08-05" }],
+          },
+          startedAt: at("2026-08-05T10:13:00"),
+          finishedAt: at("2026-08-05T10:13:04"),
+          createdAt: at("2026-08-05T10:13:00"),
+        },
+      });
+      await tx.expenseCase.update({
+        where: { id: refCase.id },
+        data: { currentRunId: run.id },
+      });
+      await tx.receiptLineLink.create({
+        data: {
+          runId: run.id,
+          lineId: line.id,
+          receiptId: receipt.id,
+          matchScore: new Prisma.Decimal("1"),
+          matchedBy: "docNo",
+        },
+      });
+
+      // 全數 PASS——PASS 不需證據（治理 CHECK 只要求非通過結果附證據）。
+      // R7 當時沒有更早的同單號案件，所以通過；之後 2002 才因與本案相同而觸發。
+      for (const r of [
+        {
+          checkKey: "R4-invoice",
+          code: "R4",
+          policyRuleId: ruleR4.id,
+          detail: { threshold: 5000, declared: 3500, hasInvoice: true },
+        },
+        {
+          checkKey: "R5-amount",
+          code: "R5",
+          policyRuleId: null,
+          detail: { declared: "3500", receipt: "3500" },
+        },
+        { checkKey: "R7-duplicate", code: "R7", policyRuleId: ruleR7.id, detail: { matches: 0 } },
+      ]) {
+        await tx.ruleResult.create({
+          data: {
+            runId: run.id,
+            checkKey: r.checkKey,
+            ruleDefinitionId: defByCode(r.code).id,
+            policyRuleId: r.policyRuleId,
+            ruleCode: r.code,
+            outcome: "PASS",
+            messageKey: `rule.${r.code}.PASS`,
+            evaluationBasis: "SINGLE",
+            evaluationDetail: r.detail,
+          },
+        });
+      }
+      await appendAudit(
+        tx,
+        chain,
+        "RUN_COMPLETED",
+        { runId: run.id, classification: "NORMAL" },
+        { runId: run.id, createdAt: at("2026-08-05T10:13:04") },
+      );
+
+      // Reviewer 採用建議：agentActionAtDecision = APPROVE、finalAction = APPROVE。
+      // 徽章依 shared deriveConsistencyFlag()（agent ≠ MANUAL_REVIEW 且 final = agent）→ CONSISTENT。
+      // seed 以 strip-types 直接執行、無法載入 shared 的 CJS dist，故以常數寫入。
+      const disposition = await tx.disposition.create({
+        data: {
+          caseId: refCase.id,
+          runId: run.id,
+          actorId: reviewer.id,
+          action: "ACCEPT",
+          agentClassificationAtDecision: "NORMAL",
+          agentActionAtDecision: "APPROVE",
+          finalClassification: "NORMAL",
+          finalAction: "APPROVE",
+          consistencyFlag: "CONSISTENT",
+          reason: null,
+          resultingStatus: "DISPOSED",
+          createdAt: at("2026-08-06T09:40:00"),
+        },
+      });
+      await appendAudit(
+        tx,
+        chain,
+        "REVIEWER_DISPOSITION",
+        {
+          dispositionId: disposition.id,
+          action: "ACCEPT",
+          finalAction: "APPROVE",
+          consistencyFlag: "CONSISTENT",
+          escalated: false,
+        },
+        {
+          actorLabel: "system:review-api",
+          actorId: reviewer.id,
+          runId: run.id,
+          createdAt: at("2026-08-06T09:40:00"),
+        },
+      );
+
+      const review = await tx.supervisorReview.create({
+        data: {
+          caseId: refCase.id,
+          actorId: supervisor.id,
+          action: "APPROVE",
+          comment: "與初審結論一致，核可結案。",
+          resultingStatus: "REVIEW_CLOSED",
+          createdAt: at("2026-08-06T14:05:00"),
+        },
+      });
+      await appendAudit(
+        tx,
+        chain,
+        "SUPERVISOR_REVIEW",
+        { supervisorReviewId: review.id, action: "APPROVE" },
+        {
+          actorLabel: "system:review-api",
+          actorId: supervisor.id,
+          createdAt: at("2026-08-06T14:05:00"),
+        },
+      );
+      await appendAudit(
+        tx,
+        chain,
+        "CASE_STATUS_CHANGED",
+        { to: "REVIEW_CLOSED" },
+        { createdAt: at("2026-08-06T14:05:01") },
+      );
+    }
   });
 
   // Summary

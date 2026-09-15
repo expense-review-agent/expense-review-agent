@@ -79,6 +79,7 @@ export class CasesService {
         currency: c.currency,
         expenseDate: this.isoDate(firstLine?.expenseDate ?? null),
         status: shownStatus,
+        caseStatus: c.status, // 流程狀態，與分類分開回傳
         recommendedAction: run?.recommendedAction ?? null,
       };
     });
@@ -138,6 +139,7 @@ export class CasesService {
       caseNumber: c.caseNumber,
       summary: firstLine?.description ?? firstLine?.category ?? "",
       status: run?.classification ?? c.status,
+      caseStatus: c.status, // 流程狀態，前端依此判斷是否仍待處置
       applicant: {
         name: c.applicantName,
         department: null, // schema 未存部門於案件層；DEMO 可留 null 或之後補
