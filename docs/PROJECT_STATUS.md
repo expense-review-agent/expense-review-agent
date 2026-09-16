@@ -21,16 +21,17 @@
 
 ---
 
-## 2. 目前完成到哪（整體約 65–70%）
+## 2. 目前完成到哪（整體約 70%）
 
 地基完成、後端 M1 API 全部實機驗證結案，**初審人員的主畫面（案件總覽 + 詳情抽屜 + 處置）
-也已完成並以 headless Chrome 端到端驗證**。誠實的完成度：
+也已完成並以 headless Chrome 端到端驗證**，**demo seed 的十情境亦已就緒**（含雙假設分歧
+`GATED` 與低信心欄位這兩個最難用資料表達的邊界）。誠實的完成度：
 
 | 層                               | 狀態            | 完成度 | 說明                                                                             |
 | -------------------------------- | --------------- | ------ | -------------------------------------------------------------------------------- |
 | 資料模型 + DB + 治理約束         | ✅ 完成         | ~95%   | schema v3、migration、trigger/CHECK/EXCLUDE 全部套用並實機驗證                   |
 | shared 型別契約                  | ✅ 完成         | ~98%   | enum 詞彙、disposition 矩陣、徽章算式、i18n 文案、presentation 純函式            |
-| seed 示範資料                    | 🟡 骨架+        | ~55%   | 4 案 + R7 參照案件（含完整結案歷程）+ 明細列，尚未到 10 情境                     |
+| seed 示範資料                    | ✅ 完成         | ~95%   | 十情境 12 案（含 R7/R8 成對參照、雙假設 GATED、低信心欄位）；db:reset 兩次一致   |
 | **後端 API（讀取類）**           | ✅ 跑通         | ~85%   | summary/list/detail/related/policies/audit 皆驗證；list/detail 已帶 `caseStatus` |
 | **後端 API（寫入類）**           | ✅ 跑通         | ~75%   | disposition/supervisor/audit 已驗證；缺狀態機防護（見下）                        |
 | **後端審核引擎（規則判定深度）** | 🟡 DEMO 簡化    | ~25%   | run 為 DEMO 判定（沿用 seed 結果）；完整 R1~R10 規則引擎未做（後續 change）      |
@@ -47,7 +48,7 @@
 - 非通過的 `RuleResult`/`MatchResult` 沒掛 `Evidence` → DB 拒絕寫入。
 - GATED/ABSTAIN 沒附原因 → 拒絕；Policy 生效區間不重疊（EXCLUDE）。
 - **shared 契約**：四分類、三桶建議、五態結果、reviewer/supervisor 動作 enum，全部對齊 Prisma； `disposition.ts` 是唯一的合法動作矩陣，前後端都 import 這份。
-- **seed**：`EXP-2026-2001`(NORMAL)、`2002`(EXCEPTION/R7)、`2003`(MISSING/R4)、`2004`(HUMAN/abstain)- `EXP-2026-1043`(R7 參照，REVIEW_CLOSED)。全部含 AuditEvent hash chain。
+- **seed**：十情境 12 案 —— `2001`(NORMAL)、`2002`(EXCEPTION/R7 重複)、`2003`(MISSING/R3+R4 大額缺件)、 `2004`(HUMAN/非 TWD abstain)、`2005`(EXCEPTION/R1 住宿超額)、`2006`(EXCEPTION/R5 不一致 + R1 **GATED** 雙假設分歧)、 `2007`+`2008`(EXCEPTION/R8 疑似拆單，成對互指)、`2009`(EXCEPTION/R10 加總差額)、`2010`(MISSING/R9 統編)、 `2011`(HUMAN/未匹配單據 + 低信心欄位)，加 `EXP-2026-1043`(R7 參照，REVIEW_CLOSED)。 全部含 AuditEvent hash chain；非通過結論一律附證據（DB CHECK 實機驗證 0 例外）。
 - **文件與治理**：ONBOARDING、GOVERNANCE、CODEOWNERS（已指到 @ChichiTung）。
 - **CI 五關**：`pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build` 全綠。
 - **後端 API（review-engine-api change）**：`apps/api/src/` 建立 11 支 REST API—— health、cases(summary/list/detail/related)、policies、runs(非同步 202+runId)、 disposition、supervisor-review、audit。讀取類已 curl 驗證通過（四分類統計/篩選正確）。 shared 新增 API 契約型別（`packages/shared/src/api.ts`）；disposition 以 shared 矩陣 驗證、稽核事件於交易內 hash-chain 寫入；shared 轉為 CommonJS 套件（dist build）供 NestJS 執行。
@@ -72,8 +73,7 @@
 3. **前端稽核頁與主管稽核（M1-U2 的主體）**：`GET /cases/:id/audit`、 `POST /cases/:id/supervisor-review` 都已就緒，前端完全沒接。側邊選單的「稽核紀錄」 目前標「即將推出」。
 4. **前端費用規範頁與重跑 run**：`GET /policies`、`POST /cases/:id/runs` + `GET /runs/:runId` 輪詢都可用，前端未實作。
 5. **輸入驗證**：沒有 DTO / `ValidationPipe`，送空 body 回 500（應回 400）。
-6. **seed 擴充**：從目前 5 筆補到完整 10 情境（含 R1 超額、R5 雙假設、R8 拆單、R10 加總、 R9 統編、未匹配單據、低信心欄位案件）。
-7. **死檔清理**：`apps/api/test/app.e2e-spec.ts` 仍是 NestJS 樣板，斷言的 `AppController` 已不存在。
+6. **死檔清理**：`apps/api/test/app.e2e-spec.ts` 仍是 NestJS 樣板，斷言的 `AppController` 已不存在。
 
 > i18n 文案已於前端 change 完成（`packages/shared/src/i18n/zh-TW.ts`），不再是待辦。
 
@@ -198,7 +198,7 @@ pnpm --filter api db:reset   # DROP SCHEMA + migrate + seed，回乾淨狀態
 
 **跨接的黏合工作，適合先熟悉全貌的人：**
 
-1. **seed 擴充**：把目前 5 案補到完整 10 情境（照 `.claude/skills/demo-case`）， 含 R1 超額、R5 雙假設、R8 拆單、R10 加總、R9 統編、低信心欄位、未匹配單據等（tasks §4.2/4.4/4.5）。 新增情境時要順手補 `i18n/zh-TW.ts`，i18n 測試會檢查每個 messageKey 都有文案。
+1. ~~**seed 擴充**~~ ✅ 已完成（tasks §4.2/4.4/4.5）：十情境 12 案，i18n 文案與 `seedKeys` 測試同步補齊。
 2. `features/audit/`：稽核頁（唯讀歷程、hash chain 驗證結果、導出），接已就緒的 `GET /cases/:id/audit`。
 3. **整合驗證**：`db:reset` 兩次一致性、app 端到端跑通（tasks §6.2）、hash chain 竄改偵測測試（§2.3）。
 4. **死檔清理**：移除或改寫 `apps/api/test/app.e2e-spec.ts`。
@@ -218,9 +218,11 @@ pnpm --filter api db:reset   # DROP SCHEMA + migrate + seed，回乾淨狀態
 
 **進行中的 change：**
 
-### `bootstrap-m1-foundation`（地基）— 17/22 完成
+### `bootstrap-m1-foundation`（地基）— 20/22 完成
 
-剩：`2.3` hash chain 竄改測試、`4.2` seed 擴充到 10 情境、`4.4` 低信心欄位案件、 `4.5` db:reset 兩次一致性、`6.2` app 端到端驗證。
+剩：`2.3` hash chain 竄改測試、`6.2` app 端到端驗證。
+
+2026-09-16 完成 `4.2` seed 十情境、`4.4` 低信心欄位案件、`4.5` db:reset 兩次一致性。
 
 ### `reviewer-workbench-queue-detail`（前端初審工作台）— 37/37 完成，**待 archive**
 
@@ -239,8 +241,7 @@ pnpm --filter api db:reset   # DROP SCHEMA + migrate + seed，回乾淨狀態
 
 1. **後端狀態機防護**（處置前置條件、主管核可後結案、`AWAITING_INFO` 補件回 `QUEUED`）—— 工作量小，且目前的缺口會讓 demo 流程走不完。
 2. **前端稽核頁 + 主管稽核**—— API 都已就緒，能讓 M1-U2 真正可展示。
-3. **seed 擴充到 10 情境**—— 當作規則引擎的驗收資料，機械式、有 skill 可循，適合當練習任務。
-4. **完整規則引擎**—— 工作量最大，建議在 seed 情境齊備後再開。
+3. **完整規則引擎**—— 工作量最大；seed 的十情境已就緒，可直接當驗收資料。
 
 ### monorepo 開發節奏提醒（本次學到）
 
