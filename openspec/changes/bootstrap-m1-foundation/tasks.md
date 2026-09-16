@@ -22,10 +22,10 @@
 ## 4. Demo seed + scripts (owner: @backend-owner)
 
 - [x] 4.1 Add `db:seed` and `db:reset` scripts (root + `apps/api`); verify `db:reset` runs drop-schema → migrate → seed with no `TRUNCATE`/`DELETE` on append-only tables
-- [ ] 4.2 Implement the seed module under `apps/api/prisma/seed/` producing the ten scenarios (normal, R7 duplicate, R1 over-limit, R3+R4 missing, R5 mismatch+dual-basis, R8 split, R10 sum-diff, foreign-invoice abstain, R9 tax-id, unmatched-receipt) using `STRUCTURED_FIXTURE` (no OCR)
+- [x] 4.2 Implement the seed module under `apps/api/prisma/seed/` producing the ten scenarios (normal, R7 duplicate, R1 over-limit, R3+R4 missing, R5 mismatch+dual-basis, R8 split, R10 sum-diff, foreign-invoice abstain, R9 tax-id, unmatched-receipt) using `STRUCTURED_FIXTURE` (no OCR)
 - [x] 4.3 Seed paired `REVIEW_CLOSED` reference cases for R7/R8 and verify the cross-case rules trigger only with a counterpart present (and not for a lone case)
-- [ ] 4.4 Include at least one key field with `confidenceLevel = LOW`/`NONE` or `isRecognized = false`, and verify that case is not classified `NORMAL`
-- [ ] 4.5 Run `db:reset` twice and verify identical demo case numbers and that all four classifications (NORMAL/EXCEPTION/MISSING/HUMAN) appear — covers demo-seed spec scenarios
+- [x] 4.4 Include at least one key field with `confidenceLevel = LOW`/`NONE` or `isRecognized = false`, and verify that case is not classified `NORMAL`
+- [x] 4.5 Run `db:reset` twice and verify identical demo case numbers and that all four classifications (NORMAL/EXCEPTION/MISSING/HUMAN) appear — covers demo-seed spec scenarios
 
 ## 5. Onboarding & governance docs (owner: @schema-owner for /docs governance)
 

@@ -109,7 +109,7 @@ Review run 在 M1 是同步執行的純運算，但 **API 必須設計成非同�
 pnpm dev:api                      # 後端 dev server
 pnpm dev:web                      # 前端 dev server
 pnpm --filter api prisma:migrate  # 套用 migration
-pnpm --filter api db:seed         # 重建 10 筆 demo 案件（會清空資料）
+pnpm --filter api db:reset         # 重建 10 筆 demo 案件（會清空資料）
 pnpm lint && pnpm typecheck && pnpm test && pnpm build   # 開 PR 前必跑
 ```
 
