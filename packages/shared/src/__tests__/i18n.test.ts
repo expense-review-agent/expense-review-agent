@@ -37,14 +37,30 @@ test("missing key falls back to fallbackKey, then a generic sentence — never t
 
 test("every messageKey used by the current seed has copy", () => {
   const seedKeys = [
+    // 規則判定理由（seed 的十情境實際送出的 outcome 訊息）
     "rule.R1.PASS",
-    "rule.R7.FAIL",
+    "rule.R1.FAIL",
+    "rule.R1.GATED",
+    "rule.R3.FAIL",
     "rule.R4.FAIL",
+    "rule.R5.FAIL",
+    "rule.R7.FAIL",
+    "rule.R8.FAIL",
+    "rule.R9.FAIL",
+    "rule.R10.FAIL",
     "rule.guard.eligibility.ABSTAIN",
+    // 雙假設評估分歧原因與比對層訊息
+    "gate.amountMismatch",
+    "match.unmatchedReceipt",
+    // 規則名稱（規範頁面與檢查清單都會查）
     "rule.R1.name",
+    "rule.R3.name",
     "rule.R4.name",
     "rule.R5.name",
     "rule.R7.name",
+    "rule.R8.name",
+    "rule.R9.name",
+    "rule.R10.name",
     "rule.guard.eligibility.name",
   ];
   for (const key of seedKeys) {
