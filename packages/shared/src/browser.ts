@@ -16,3 +16,5 @@ export { zhTW } from "./i18n/zh-TW.ts";
 export * from "./presentation/check-view.ts";
 export * from "./presentation/disposition-options.ts";
 export * from "./presentation/money.ts";
+export * from "./presentation/queue-view.ts";
+export * from "./presentation/case-history.ts";

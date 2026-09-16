@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { relatedCasesFromChecks, toCheckView } from "@expense-review-agent/shared/browser";
 import type { CaseDetail } from "@expense-review-agent/shared/browser";
 import { isNotFound } from "../../api/client";
+import type { PageName } from "../../app/router";
 import { useCaseDetail } from "../../api/queries";
 import { CaseStatusTag, ClassificationBadge } from "../../components/Badges";
 import { EmptyState, ErrorState, SkeletonRows } from "../../components/States";
@@ -12,7 +13,16 @@ import { SuggestionPanel } from "./SuggestionPanel";
 import { RelatedCases } from "./RelatedCases";
 import { DispositionPanel } from "./DispositionPanel";
 
-export function CaseDrawer({ caseId, onClose }: { caseId: string; onClose: () => void }) {
+export function CaseDrawer({
+  caseId,
+  page,
+  onClose,
+}: {
+  caseId: string;
+  /** 當前頁面：關聯案件與申請紀錄的連結要留在同一頁。 */
+  page: PageName;
+  onClose: () => void;
+}) {
   const detail = useCaseDetail(caseId);
   const { containerRef, focusRef } = useModalBehavior<HTMLElement, HTMLHeadingElement>(onClose);
 
@@ -61,7 +71,7 @@ export function CaseDrawer({ caseId, onClose }: { caseId: string; onClose: () =>
               />
             )
           ) : (
-            <CaseDetailBody detail={detail.data} />
+            <CaseDetailBody detail={detail.data} page={page} />
           )}
         </div>
       </aside>
@@ -69,13 +79,13 @@ export function CaseDrawer({ caseId, onClose }: { caseId: string; onClose: () =>
   );
 }
 
-function CaseDetailBody({ detail }: { detail: CaseDetail }) {
+function CaseDetailBody({ detail, page }: { detail: CaseDetail; page: PageName }) {
   const checks = useMemo(() => detail.checks.map(toCheckView), [detail.checks]);
   const relatedFromEvidence = useMemo(() => relatedCasesFromChecks(checks), [checks]);
 
   return (
     <>
-      <ApplicantInfo detail={detail} />
+      <ApplicantInfo detail={detail} page={page} />
 
       {detail.run === null ? (
         <section className="section">
@@ -98,7 +108,7 @@ function CaseDetailBody({ detail }: { detail: CaseDetail }) {
 
           <SuggestionPanel detail={detail} checks={checks} />
 
-          {relatedFromEvidence.length > 0 && <RelatedCases caseId={detail.id} />}
+          {relatedFromEvidence.length > 0 && <RelatedCases caseId={detail.id} page={page} />}
 
           <DispositionPanel detail={detail} />
         </>

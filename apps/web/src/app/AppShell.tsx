@@ -1,4 +1,7 @@
 import type { ReactNode } from "react";
+import { t } from "@expense-review-agent/shared/browser";
+import { pageHref } from "./router";
+import type { PageName } from "./router";
 
 function ClipboardIcon() {
   return (
@@ -23,8 +26,8 @@ function monthLabel(date = new Date()): string {
   return `${date.getFullYear()} 年 ${date.getMonth() + 1} 月`;
 }
 
-/** 頂列 + 側邊主選單。M1 本輪只開放「案件總覽」，其他入口標示即將推出。 */
-export function AppShell({ children }: { children: ReactNode }) {
+/** 頂列 + 側邊主選單。本輪開放「案件總覽」與「已結案案件」，其餘入口標示即將推出。 */
+export function AppShell({ children, page }: { children: ReactNode; page: PageName }) {
   return (
     <>
       <header className="topbar">
@@ -47,7 +50,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="layout">
         <nav className="side" aria-label="主選單">
           <div className="side__label">主選單</div>
-          <a className="side__item side__item--on" href="#/cases" aria-current="page">
+          <a
+            className={`side__item${page === "queue" ? " side__item--on" : ""}`}
+            href={pageHref("queue")}
+            aria-current={page === "queue" ? "page" : undefined}
+          >
             <svg
               viewBox="0 0 16 16"
               fill="none"
@@ -61,6 +68,22 @@ export function AppShell({ children }: { children: ReactNode }) {
               <rect x="9" y="9" width="5" height="5" rx="1" />
             </svg>
             案件總覽
+          </a>
+          <a
+            className={`side__item${page === "closed" ? " side__item--on" : ""}`}
+            href={pageHref("closed")}
+            aria-current={page === "closed" ? "page" : undefined}
+          >
+            <svg
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              aria-hidden="true"
+            >
+              <path d="M2 4.5h12v9H2zM2 4.5 4 2h8l2 2.5M6 8h4" />
+            </svg>
+            {t("closed.title")}
           </a>
           <span className="side__item side__item--off" aria-disabled="true">
             <svg

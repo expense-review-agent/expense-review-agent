@@ -1,5 +1,6 @@
 import { formatMoney } from "@expense-review-agent/shared/browser";
 import { caseHref } from "../../app/router";
+import type { PageName } from "../../app/router";
 import { useCaseList, useRelatedCases } from "../../api/queries";
 import { CaseStatusTag, ClassificationBadge, isClassification } from "../../components/Badges";
 import { ErrorState } from "../../components/States";
@@ -9,7 +10,7 @@ function relatedAmount(amount: string | null, currency: string | null): string {
   return currency ? formatMoney(amount, currency) : amount;
 }
 
-export function RelatedCases({ caseId }: { caseId: string }) {
+export function RelatedCases({ caseId, page }: { caseId: string; page: PageName }) {
   const related = useRelatedCases(caseId, true);
   // 關聯案件 API 沒有幣別，從列表快取取得；取不到時只顯示數字、不假設是 TWD。
   const list = useCaseList();
@@ -28,7 +29,7 @@ export function RelatedCases({ caseId }: { caseId: string }) {
         <div className="related">
           {related.data.map((r) => (
             <div key={r.id} className="related__row">
-              <a className="link" href={caseHref(r.id)}>
+              <a className="link" href={caseHref(r.id, page)}>
                 {r.caseNumber}
               </a>
               <span className="mono">{relatedAmount(r.amount, currencyOf(r.id))}</span>

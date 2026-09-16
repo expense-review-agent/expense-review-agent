@@ -107,6 +107,56 @@ export const zhTW: Readonly<Record<string, string>> = {
   "suggestion.HUMAN": "此案涉及 Agent 無法確定的判斷，建議由 Reviewer 綜合業務情境後決定。",
   "suggestion.fallback": "請參考下方檢查結果。",
 
+  // ---- 案件總覽：篩選、搜尋與排序 ----
+  "queue.filter.all": "全部",
+  "queue.filter.all.hint": "待審總數",
+  "queue.filter.classification.legend": "依 Agent 分類篩選",
+  "queue.filter.caseStatus.legend": "依處理狀態篩選",
+  "queue.search.label": "搜尋案件",
+  "queue.search.placeholder": "搜尋案件編號、申請人、部門或說明",
+  "queue.search.clear": "清除搜尋",
+  "queue.filter.clear": "清除篩選",
+  // 唯一會隨操作變動的數字（統計卡片是固定總覽，chip 不帶數字）
+  "queue.resultCount": "共 {count} 筆",
+  "queue.empty.noCases": "目前沒有待審案件。",
+  "queue.empty.noMatch": "沒有符合目前篩選條件的案件。",
+  "queue.empty.noSearchMatch": "沒有符合「{term}」的案件。",
+  "queue.sort.applicationDate": "申請日期",
+  "queue.sort.caseNumber": "案件編號",
+  "queue.sort.asc": "由小到大排序",
+  "queue.sort.desc": "由大到小排序",
+  "queue.sort.applicationDate.asc": "申請日期由舊到新",
+  "queue.sort.applicationDate.desc": "申請日期由新到舊",
+  "queue.sort.caseNumber.asc": "案件編號由小到大",
+  "queue.sort.caseNumber.desc": "案件編號由大到小",
+
+  // ---- 已結案案件頁面 ----
+  "closed.title": "已結案案件",
+  "closed.subtitle": "已完成主管稽核並結案的案件，僅供查閱。",
+  "closed.badge": "已結案",
+  "closed.empty": "目前沒有已結案案件。",
+
+  // ---- 處置人（顯示 append-only 紀錄，不重算、不猜測）----
+  "disposition.actor.label": "處置人",
+  "disposition.decidedAt.label": "處置時間",
+  "disposition.actor.unknown": "查無處置紀錄",
+
+  // ---- 申請人／部門申請紀錄 ----
+  "caseHistory.title.applicant": "{subject} 的申請紀錄",
+  "caseHistory.title.department": "{subject} 的申請紀錄",
+  "caseHistory.open.applicant": "檢視此申請人的申請紀錄",
+  "caseHistory.open.department": "檢視此部門的申請紀錄",
+  "caseHistory.column.caseNumber": "案件編號",
+  "caseHistory.column.applicationDate": "申請日期",
+  "caseHistory.column.amount": "金額",
+  "caseHistory.column.classification": "Agent 分類",
+  "caseHistory.column.caseStatus": "處理狀態",
+  "caseHistory.current": "目前檢視",
+  "caseHistory.empty": "沒有其他申請紀錄。",
+  "caseHistory.error": "無法取得申請紀錄。",
+  "caseHistory.retry": "重試",
+  "caseHistory.close": "關閉",
+
   // ---- 通用訊息 ----
   "message.generic": "（無說明）",
 };

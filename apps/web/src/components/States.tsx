@@ -30,11 +30,25 @@ export function ErrorState({
   );
 }
 
-export function EmptyState({ title, children }: { title: string; children?: ReactNode }) {
+export function EmptyState({
+  title,
+  children,
+  action,
+}: {
+  title: string;
+  children?: ReactNode;
+  /** 脫離入口（例如清除篩選／搜尋），避免使用者停在無法脫離的空列表。 */
+  action?: { label: string; onClick: () => void } | undefined;
+}) {
   return (
     <div className="state">
       <div className="state__title">{title}</div>
       {children && <div>{children}</div>}
+      {action && (
+        <button type="button" className="btn btn--secondary" onClick={action.onClick}>
+          {action.label}
+        </button>
+      )}
     </div>
   );
 }

@@ -25,6 +25,9 @@ import { computeAuditHash } from "./hash-chain.ts";
 const prisma = new PrismaClient();
 const ENGINE_VERSION = "m1-review-engine@0.1.0";
 
+/** 台北時間的固定時間戳（demo 歷程要可重現，不能用 new Date()）。 */
+const at = (iso: string) => new Date(`${iso}+08:00`);
+
 /** Append an AuditEvent, maintaining the per-case hash chain. */
 async function appendAudit(
   tx: Prisma.TransactionClient,
@@ -208,6 +211,7 @@ async function main(): Promise<void> {
         caseNumber: "EXP-2026-1043",
         status: "REVIEW_CLOSED",
         applicantName: "李美華",
+        applicantDepartment: "業務部",
         applicationDate: new Date("2026-08-05"),
         declaredTotal: new Prisma.Decimal("3500"),
         policyVersionId: policyVersion.id,
@@ -221,6 +225,8 @@ async function main(): Promise<void> {
     async function makeCase(opts: {
       caseNumber: string;
       applicantName: string;
+      /// 申請當時的部門（時點快照）。省略代表來源系統未提供 → 走「未記錄」路徑。
+      applicantDepartment?: string;
       status: "DRAFT" | "QUEUED" | "AWAITING_INFO" | "DISPOSED" | "REVIEW_CLOSED";
       applicationDate: string;
       declaredTotal: string;
@@ -238,6 +244,7 @@ async function main(): Promise<void> {
           caseNumber: opts.caseNumber,
           status: opts.status,
           applicantName: opts.applicantName,
+          applicantDepartment: opts.applicantDepartment ?? null,
           applicationDate: new Date(opts.applicationDate),
           declaredTotal: new Prisma.Decimal(opts.declaredTotal),
           currency: opts.currency ?? "TWD",
@@ -265,6 +272,71 @@ async function main(): Promise<void> {
       return { c, chain };
     }
 
+    /**
+     * 為案件補上真正的 Reviewer 處置紀錄與對應稽核事件。
+     *
+     * 流程狀態一旦離開 QUEUED，就必須有一筆說明它的 Disposition——在真實流程裡
+     * 只有 Reviewer 送出處置才會推進狀態，所以「已處置但查不到處置人」是不可能出現的
+     * 狀態（見 specs/demo-seed）。
+     *
+     * 徽章與 resultingStatus 都對齊 shared 的 `deriveConsistencyFlag()` /
+     * `resolveDisposition()`，但以常數寫入並在呼叫處註明推導依據——seed 以
+     * strip-types 直接執行 .ts，無法載入 shared 的 CJS dist（同 hash-chain.ts 的處理）。
+     */
+    async function seedDisposition(
+      chain: { caseId: string; seq: number; prevHash: string | null },
+      opts: {
+        caseId: string;
+        runId: string;
+        action: "ACCEPT" | "REQUEST_INFO" | "MANUAL_JUDGEMENT" | "HOLD";
+        agentClassificationAtDecision: "NORMAL" | "EXCEPTION" | "MISSING" | "HUMAN";
+        agentActionAtDecision: "APPROVE" | "REQUEST_INFO" | "MANUAL_REVIEW";
+        finalClassification: "NORMAL" | "EXCEPTION" | "MISSING" | "HUMAN" | null;
+        finalAction: "APPROVE" | "REQUEST_INFO" | "MANUAL_REVIEW" | null;
+        consistencyFlag:
+          "CONSISTENT" | "OVERRIDDEN" | "HUMAN_ASSUMED" | "ESCALATED" | "PENDING_DECISION";
+        reason?: string;
+        resultingStatus: "QUEUED" | "AWAITING_INFO" | "DISPOSED";
+        escalated: boolean;
+        at: Date;
+      },
+    ): Promise<void> {
+      const disposition = await tx.disposition.create({
+        data: {
+          caseId: opts.caseId,
+          runId: opts.runId,
+          actorId: reviewer.id,
+          action: opts.action,
+          agentClassificationAtDecision: opts.agentClassificationAtDecision,
+          agentActionAtDecision: opts.agentActionAtDecision,
+          finalClassification: opts.finalClassification,
+          finalAction: opts.finalAction,
+          consistencyFlag: opts.consistencyFlag,
+          reason: opts.reason ?? null,
+          resultingStatus: opts.resultingStatus,
+          createdAt: opts.at,
+        },
+      });
+      await appendAudit(
+        tx,
+        chain,
+        "REVIEWER_DISPOSITION",
+        {
+          dispositionId: disposition.id,
+          action: opts.action,
+          finalAction: opts.finalAction,
+          consistencyFlag: opts.consistencyFlag,
+          escalated: opts.escalated,
+        },
+        {
+          actorLabel: "system:review-api",
+          actorId: reviewer.id,
+          runId: opts.runId,
+          createdAt: opts.at,
+        },
+      );
+    }
+
     // =====================================================================
     // CASE 1 — NORMAL (all pass, consistent)
     // =====================================================================
@@ -272,6 +344,7 @@ async function main(): Promise<void> {
       const { c, chain } = await makeCase({
         caseNumber: "EXP-2026-2001",
         applicantName: "王小明",
+        applicantDepartment: "業務部",
         status: "DISPOSED",
         applicationDate: "2026-08-12",
         declaredTotal: "1200",
@@ -311,6 +384,23 @@ async function main(): Promise<void> {
         },
       });
       await appendAudit(tx, chain, "RUN_COMPLETED", { classification: "NORMAL" });
+
+      // Reviewer 採用建議：agent = APPROVE、final = APPROVE
+      // → deriveConsistencyFlag：agent ≠ MANUAL_REVIEW 且 final = agent → CONSISTENT
+      // → resolveDisposition(APPROVE, ACCEPT).resultingStatus → DISPOSED
+      await seedDisposition(chain, {
+        caseId: c.id,
+        runId: run.id,
+        action: "ACCEPT",
+        agentClassificationAtDecision: "NORMAL",
+        agentActionAtDecision: "APPROVE",
+        finalClassification: "NORMAL",
+        finalAction: "APPROVE",
+        consistencyFlag: "CONSISTENT",
+        resultingStatus: "DISPOSED",
+        escalated: false,
+        at: at("2026-08-13T09:20:00"),
+      });
     }
 
     // =====================================================================
@@ -320,6 +410,7 @@ async function main(): Promise<void> {
       const { c, chain } = await makeCase({
         caseNumber: "EXP-2026-2002",
         applicantName: "李美華",
+        applicantDepartment: "業務部",
         status: "DISPOSED",
         applicationDate: "2026-08-20",
         declaredTotal: "3500",
@@ -371,6 +462,30 @@ async function main(): Promise<void> {
         },
       });
       await appendAudit(tx, chain, "RUN_COMPLETED", { classification: "EXCEPTION", rule: "R7" });
+
+      // Reviewer 採用 MANUAL_REVIEW 建議 = 轉呈主管，人與 Agent 都沒下最終結論。
+      // ACCEPT 的 finalAction 由動作本身決定（= 當時的建議），與 API 的
+      // resolveFinalAction 一致：final = MANUAL_REVIEW
+      // → deriveConsistencyFlag：agent = final = MANUAL_REVIEW → ESCALATED
+      // → finalClassification：final === 建議 → 沿用當時的 Agent 分類（EXCEPTION）
+      // → resolveDisposition(MANUAL_REVIEW, ACCEPT)：resultingStatus DISPOSED、escalates
+      //
+      // 註：PENDING_DECISION 只在 finalAction 為 null 時產生，而那只發生在 HOLD，
+      // HOLD 的 resultingStatus 是 QUEUED——「PENDING_DECISION + DISPOSED」是真實流程
+      // 產不出來的組合，不可寫進 seed。
+      await seedDisposition(chain, {
+        caseId: c.id,
+        runId: run.id,
+        action: "ACCEPT",
+        agentClassificationAtDecision: "EXCEPTION",
+        agentActionAtDecision: "MANUAL_REVIEW",
+        finalClassification: "EXCEPTION",
+        finalAction: "MANUAL_REVIEW",
+        consistencyFlag: "ESCALATED",
+        resultingStatus: "DISPOSED",
+        escalated: true,
+        at: at("2026-08-21T14:05:00"),
+      });
     }
 
     // =====================================================================
@@ -380,6 +495,7 @@ async function main(): Promise<void> {
       const { c, chain } = await makeCase({
         caseNumber: "EXP-2026-2003",
         applicantName: "黃建宏",
+        applicantDepartment: "研發部",
         status: "AWAITING_INFO",
         applicationDate: "2026-08-22",
         declaredTotal: "6200",
@@ -436,6 +552,8 @@ async function main(): Promise<void> {
       const { c, chain } = await makeCase({
         caseNumber: "EXP-2026-2004",
         applicantName: "陳大文",
+        // 刻意不給部門：走「未記錄」路徑（部門欄不可點選）
+
         status: "QUEUED",
         applicationDate: "2026-08-25",
         declaredTotal: "12000",
@@ -494,7 +612,6 @@ async function main(): Promise<void> {
     //   08-05 建立 → Agent 初審 NORMAL（全數通過）→ 08-06 初審採用建議 → 主管核可結案
     // =====================================================================
     {
-      const at = (iso: string) => new Date(`${iso}+08:00`);
       const chain = { caseId: refCase.id, seq: 0, prevHash: null as string | null };
 
       const line = await tx.expenseLine.create({

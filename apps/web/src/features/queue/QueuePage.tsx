@@ -1,22 +1,39 @@
 import { useMemo, useState } from "react";
+import { t } from "@expense-review-agent/shared/browser";
 import { useCaseList } from "../../api/queries";
 import { StatCards } from "./StatCards";
 import { FilterChips } from "./FilterChips";
+import { SearchBox } from "./SearchBox";
 import { CaseTable } from "./CaseTable";
-import { classificationCounts, queueItems } from "./model";
-import type { ClassificationFilter } from "./model";
+import { ResultCount } from "./ResultCount";
+import { DEFAULT_SORT, buildQueueView, toggleSort } from "./model";
+import type { CaseStatusFilter, ClassificationFilter, SortKey, SortState } from "./model";
 
 export function QueuePage({ activeCaseId }: { activeCaseId: string | null }) {
-  const [filter, setFilter] = useState<ClassificationFilter>("ALL");
+  const [search, setSearch] = useState("");
+  const [classification, setClassification] = useState<ClassificationFilter>("ALL");
+  const [caseStatus, setCaseStatus] = useState<CaseStatusFilter>("ALL");
+  const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
   const list = useCaseList();
 
-  // 參照案件（REVIEW_CLOSED）不進預設佇列；計數也由這份資料算
-  const queue = useMemo(() => queueItems(list.data ?? []), [list.data]);
-  const { counts, total } = useMemo(() => classificationCounts(queue), [queue]);
-  const visibleItems = useMemo(
-    () => (filter === "ALL" ? queue : queue.filter((item) => item.status === filter)),
-    [queue, filter],
+  // 整個檢視由 shared 的管線算出（基底 → 搜尋 → 兩個維度 → 排序），
+  // 所以顯示的計數必然等於列表筆數；這裡不自己組任何篩選或計數邏輯。
+  const view = useMemo(
+    () => buildQueueView(list.data ?? [], { search, classification, caseStatus }, sort),
+    [list.data, search, classification, caseStatus, sort],
   );
+
+  function clearNarrowing() {
+    setSearch("");
+    setClassification("ALL");
+    setCaseStatus("ALL");
+  }
+
+  const emptyTitle = view.isSearching
+    ? t("queue.empty.noSearchMatch", { term: search.trim() })
+    : view.isNarrowed
+      ? t("queue.empty.noMatch")
+      : t("queue.empty.noCases");
 
   return (
     <>
@@ -28,22 +45,33 @@ export function QueuePage({ activeCaseId }: { activeCaseId: string | null }) {
       </div>
 
       {/* 列表未取得（載入中或失敗）時不顯示數字，避免把失敗誤顯示為 0；錯誤與重試由下方列表呈現 */}
-      <StatCards counts={counts} total={total} loading={!list.isSuccess} />
-
-      <FilterChips
-        value={filter}
-        onChange={setFilter}
-        counts={list.isSuccess ? counts : null}
-        total={total}
+      <StatCards
+        value={classification}
+        onChange={setClassification}
+        counts={view.classification.counts}
+        total={view.classification.total}
+        loading={!list.isSuccess}
       />
 
+      <SearchBox value={search} onChange={setSearch} />
+
+      <FilterChips value={caseStatus} onChange={setCaseStatus} />
+
+      {/* 唯一會隨操作變動的數字，緊貼列表上方 */}
+      <ResultCount count={view.resultCount} loading={!list.isSuccess} />
+
       <CaseTable
-        items={visibleItems}
+        items={view.items}
         loading={list.isPending}
         error={list.isError ? list.error : null}
         onRetry={() => void list.refetch()}
         activeCaseId={activeCaseId}
-        filtered={filter !== "ALL"}
+        sort={sort}
+        onSort={(key: SortKey) => setSort((current) => toggleSort(current, key))}
+        emptyTitle={emptyTitle}
+        emptyAction={
+          view.isNarrowed ? { label: t("queue.filter.clear"), onClick: clearNarrowing } : undefined
+        }
       />
     </>
   );

@@ -76,6 +76,67 @@ test("every enum value the workbench displays has copy", () => {
   }
 });
 
+test("every key the queue, closed page and history dialog display has copy", () => {
+  const uiKeys = [
+    // 篩選與搜尋
+    "queue.filter.all",
+    "queue.filter.all.hint",
+    "queue.filter.classification.legend",
+    "queue.filter.caseStatus.legend",
+    "queue.search.label",
+    "queue.search.placeholder",
+    "queue.search.clear",
+    "queue.filter.clear",
+    "queue.resultCount",
+    "queue.empty.noCases",
+    "queue.empty.noMatch",
+    "queue.empty.noSearchMatch",
+    // 排序（每個排序鍵 × 方向都要有無障礙說明）
+    "queue.sort.applicationDate",
+    "queue.sort.caseNumber",
+    "queue.sort.applicationDate.asc",
+    "queue.sort.applicationDate.desc",
+    "queue.sort.caseNumber.asc",
+    "queue.sort.caseNumber.desc",
+    // 已結案頁面
+    "closed.title",
+    "closed.subtitle",
+    "closed.badge",
+    "closed.empty",
+    // 處置人
+    "disposition.actor.label",
+    "disposition.decidedAt.label",
+    "disposition.actor.unknown",
+    // 申請紀錄
+    "caseHistory.title.applicant",
+    "caseHistory.title.department",
+    "caseHistory.open.applicant",
+    "caseHistory.open.department",
+    "caseHistory.current",
+    "caseHistory.empty",
+    "caseHistory.error",
+  ];
+  for (const key of uiKeys) {
+    assert.ok(lookupMessage(key), `missing copy for ${key}`);
+  }
+});
+
+test("result-count copy interpolates the count, including zero", () => {
+  assert.equal(t("queue.resultCount", { count: 2 }), "共 2 筆");
+  assert.equal(t("queue.resultCount", { count: 0 }), "共 0 筆");
+});
+
+test("history dialog copy carries no risk or accusation wording", () => {
+  // 產品邊界：申請紀錄是唯讀清單，不得暗示「此人／此部門有問題」（跨案件風險判定屬 M2）。
+  const forbidden = ["風險", "異常頻繁", "可疑", "舞弊", "警示"];
+  for (const [key, copy] of Object.entries(zhTW)) {
+    if (!key.startsWith("caseHistory.")) continue;
+    for (const word of forbidden) {
+      assert.ok(!copy.includes(word), `${key} must not use accusatory wording "${word}"`);
+    }
+  }
+});
+
 test("suspicion-only rules' FAIL copy is phrased as suspicion", () => {
   for (const code of ["R7", "R8"]) {
     const copy = lookupMessage(`rule.${code}.FAIL`);

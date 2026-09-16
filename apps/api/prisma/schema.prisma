@@ -481,6 +481,10 @@ model ExpenseCase {
 
   applicantName String
   applicantCode String?
+  /// 申請當時的部門，時點快照（與 applicantName 同層去正規化）。
+  /// 來源系統未提供時為 null，語意是「未記錄」而非空字串。
+  /// 日後組織調整不得改動已送出案件顯示的部門。
+  applicantDepartment String?
 
   /// 申請日：Policy 版本解析的基準日
   applicationDate DateTime? @db.Date

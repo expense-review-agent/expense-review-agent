@@ -1,31 +1,26 @@
-import type { CaseListItem, Classification } from "@expense-review-agent/shared/browser";
+// =============================================================================
+// 佇列的篩選、搜尋、排序與計數邏輯都在 packages/shared 的 presentation/queue-view，
+// 這裡只轉出，**不在 web 保留第二份實作**。
+//
+// 理由：web 沒有測試框架（刻意），而交叉計數（兩個維度互相影響、再加上搜尋）是最容易
+// 寫錯又最難用眼睛看出來的地方。放在 shared 才能用 node --test 窮舉。
+// =============================================================================
 
-export const QUEUE_CLASSIFICATIONS: readonly Classification[] = [
-  "NORMAL",
-  "MISSING",
-  "EXCEPTION",
-  "HUMAN",
-];
+export {
+  DEFAULT_SORT,
+  QUEUE_CASE_STATUSES,
+  QUEUE_CLASSIFICATIONS,
+  buildClosedView,
+  buildQueueView,
+  queueItems,
+  toggleSort,
+} from "@expense-review-agent/shared/browser";
 
-export type ClassificationFilter = Classification | "ALL";
-
-/** 預設佇列：排除已結案的參照案件（REVIEW_CLOSED）。 */
-export function queueItems(items: readonly CaseListItem[]): CaseListItem[] {
-  return items.filter((item) => item.caseStatus !== "REVIEW_CLOSED");
-}
-
-/**
- * 四分類計數，由「同一份」預設佇列計算，卡片、chip、列表三者必然一致。
- * 不用 /cases/summary：它會把帶 run 的已結案參照案件算進分類。
- */
-export function classificationCounts(items: readonly CaseListItem[]) {
-  const counts = Object.fromEntries(QUEUE_CLASSIFICATIONS.map((c) => [c, 0])) as Record<
-    Classification,
-    number
-  >;
-  for (const item of items) {
-    if (item.status in counts) counts[item.status as Classification] += 1;
-  }
-  const total = QUEUE_CLASSIFICATIONS.reduce((sum, c) => sum + counts[c], 0);
-  return { counts, total };
-}
+export type {
+  CaseStatusFilter,
+  ClassificationFilter,
+  ClosedView,
+  QueueView,
+  SortKey,
+  SortState,
+} from "@expense-review-agent/shared/browser";
