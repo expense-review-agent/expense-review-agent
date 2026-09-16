@@ -180,12 +180,23 @@ export type CaseHistoryResponse = z.infer<typeof caseHistoryResponseSchema>;
 export const policyItemSchema = z.object({
   ruleKey: z.string(),
   ruleCode: z.string(),
-  name: z.string(),
+  /// 規則名稱的 i18n key（例 "rule.R1.name"）。欄位名刻意帶 Key：這裡存的一直是
+  /// 識別碼而非顯示文案，叫 name 會誘導呼叫端直接印出 "rule.R1.name"。
+  nameKey: z.string(),
+  /// 規則說明的 i18n key；型錄未提供說明時為 null。
+  descKey: z.string().nullable(),
+  /// 組織條文的參照與原文。產品內建的安全邊界沒有條文可引用，兩者皆為 null——
+  /// 不以系統文案偽造成條文（見 specs/review-api「規範列表」）。
   clauseRef: z.string().nullable(),
-  clauseText: z.string(),
+  clauseText: z.string().nullable(),
   category: z.string().nullable(),
   params: z.record(z.string(), z.unknown()).default({}),
   violationHandling: z.string().nullable(),
+  /// true = 本規則只能表述為「疑似」（R7 重複、R8 拆單）。取自產品擁有的 RuleDefinition，
+  /// **不得**由組織可編輯的 clauseText 字面推斷——那會讓組織改寫條文就關掉 guardrail。
+  isSuspicionOnly: z.boolean(),
+  /// true = 產品內建的安全邊界檢查，非組織條文。
+  isGuardrail: z.boolean(),
 });
 export type PolicyItem = z.infer<typeof policyItemSchema>;
 

@@ -4,6 +4,7 @@ import {
   caseHistoryResponseSchema,
   caseListResponseSchema,
   dispositionResponseSchema,
+  policyListResponseSchema,
   relatedCasesResponseSchema,
 } from "@expense-review-agent/shared/browser";
 import type { CaseHistoryScope, DispositionRequest } from "@expense-review-agent/shared/browser";
@@ -18,6 +19,20 @@ export const caseKeys = {
   related: (id: string) => ["cases", id, "related"] as const,
   history: (id: string, scope: CaseHistoryScope) => ["cases", id, "history", scope] as const,
 };
+
+export const policyKeys = {
+  all: ["policies"] as const,
+  list: () => ["policies", "list"] as const,
+};
+
+/** Agent 當前的檢查依據（唯讀）。後端已含沒有條文的產品內建 guardrail。 */
+export function usePolicyList() {
+  return useQuery({
+    queryKey: policyKeys.list(),
+    queryFn: () => request("/policies", policyListResponseSchema),
+    select: (data) => data.items,
+  });
+}
 
 export function useCaseList() {
   return useQuery({

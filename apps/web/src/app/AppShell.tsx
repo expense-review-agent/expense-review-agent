@@ -85,7 +85,15 @@ export function AppShell({ children, page }: { children: ReactNode; page: PageNa
             </svg>
             {t("closed.title")}
           </a>
-          <span className="side__item side__item--off" aria-disabled="true">
+          {/* 可點擊且會導覽，所以**不能**帶 aria-disabled——那會讓輔助技術報出
+              與實際行為相反的狀態。「即將推出」徽章保留：指的是完整的規範管理
+              （編輯、版本切換）尚未提供，而這個頁面是唯讀預覽。 */}
+          <a
+            className={`side__item side__item--preview${page === "policies" ? " side__item--on" : ""}`}
+            href={pageHref("policies")}
+            aria-current={page === "policies" ? "page" : undefined}
+            aria-label={t("policy.nav.aria")}
+          >
             <svg
               viewBox="0 0 16 16"
               fill="none"
@@ -95,8 +103,9 @@ export function AppShell({ children, page }: { children: ReactNode; page: PageNa
             >
               <path d="M2 4h12M2 8h12M2 12h8" />
             </svg>
-            費用規範<span className="side__soon">即將推出</span>
-          </span>
+            {t("policy.title")}
+            <span className="side__soon">即將推出</span>
+          </a>
           <span className="side__item side__item--off" aria-disabled="true">
             <svg
               viewBox="0 0 16 16"

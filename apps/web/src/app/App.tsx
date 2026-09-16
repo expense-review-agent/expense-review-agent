@@ -2,6 +2,7 @@ import { AppShell } from "./AppShell";
 import { useRoute, closeCase } from "./router";
 import { QueuePage } from "../features/queue/QueuePage";
 import { ClosedCasesPage } from "../features/closed/ClosedCasesPage";
+import { PoliciesPage } from "../features/policies/PoliciesPage";
 import { CaseDrawer } from "../features/detail/CaseDrawer";
 
 export function App() {
@@ -9,7 +10,9 @@ export function App() {
 
   return (
     <AppShell page={route.name}>
-      {route.name === "closed" ? (
+      {route.name === "policies" ? (
+        <PoliciesPage />
+      ) : route.name === "closed" ? (
         <ClosedCasesPage activeCaseId={route.caseId} />
       ) : (
         <QueuePage activeCaseId={route.caseId} />

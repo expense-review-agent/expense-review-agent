@@ -85,6 +85,9 @@ export const zhTW: Readonly<Record<string, string>> = {
   "rule.R8.FAIL": "同申請人、同店家於短期內多筆申報，加總超過門檻，疑似拆單，需人工確認。",
   "rule.guard.eligibility.ABSTAIN":
     "本案超出 Agent 目前可判斷的範圍（例如非 TWD 幣別），已主動轉交人工。",
+  // 規範頁面用的規則說明（描述這條檢查做什麼，與上面的個案判定訊息不同）
+  "rule.guard.eligibility.desc":
+    "檢查案件是否落在 Agent 可判斷的範圍內。關鍵欄位信心不足、來源互相衝突或非 TWD 幣別時，一律轉交人工，不以資料不足硬判通過。",
 
   // ---- 依結果類型的通用句（訊息鍵缺漏時保底）----
   "outcome.PASS": "此項檢查通過。",
@@ -156,6 +159,30 @@ export const zhTW: Readonly<Record<string, string>> = {
   "caseHistory.error": "無法取得申請紀錄。",
   "caseHistory.retry": "重試",
   "caseHistory.close": "關閉",
+
+  // ---- 費用規範（Agent 檢查依據，唯讀）----
+  // 這一段的文案只描述「每條規則檢查什麼」。不得出現確定性的結論用詞
+  // （違規／舞弊之類），那屬既有系統與人的職責，不是 Agent 的。
+  "policy.title": "費用規範",
+  "policy.subtitle": "Agent 進行初審時所依據的檢查項目。",
+  "policy.readonly": "唯讀預覽。規範的編輯與版本管理尚未開放。",
+  "policy.currentVersion":
+    "以下為目前生效版本的檢查依據；個別案件的判斷依據以該案件當時記錄的版本為準。",
+  "policy.nav.aria": "費用規範（唯讀預覽，完整功能即將推出）",
+  "policy.section.clauses": "組織規範條文",
+  "policy.section.clauses.hint": "由公司規範設定，條文原文如實呈現。",
+  "policy.section.guardrails": "產品內建安全邊界",
+  "policy.section.guardrails.hint": "產品內建的檢查，非公司條文，因此沒有可引用的條文出處。",
+  "policy.builtin.badge": "產品內建",
+  "policy.clauseRef.none": "未標註條文",
+  "policy.desc.none": "（無補充說明）",
+  // 產品層 guardrail：R7 重複、R8 拆單只能提「疑似」，組織設定不可覆寫。
+  "policy.suspicionOnly.badge": "僅提示疑似",
+  "policy.suspicionOnly.note": "此檢查只會標示疑似情形，需由審核人員確認，Agent 不下結論。",
+  "policy.loading": "載入檢查依據…",
+  "policy.error": "無法取得檢查依據。",
+  "policy.retry": "重試",
+  "policy.empty": "目前沒有啟用中的檢查依據。",
 
   // ---- 通用訊息 ----
   "message.generic": "（無說明）",

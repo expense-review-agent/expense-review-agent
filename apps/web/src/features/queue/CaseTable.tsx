@@ -85,6 +85,9 @@ export function CaseTable({
             onSort={onSort}
           />
           <span>申請人 / 說明</span>
+          {/* 部門緊接申請人。搜尋會比對部門，所以它必須看得見——
+              否則「輸入業務就少了幾列」這件事在畫面上無從解釋。 */}
+          <span>部門</span>
           <span>費用類別</span>
           <span>金額</span>
           <SortableHeader
@@ -116,6 +119,10 @@ export function CaseTable({
                 <span className="cell-id">{item.caseNumber}</span>
                 <span className="cell-name" title={`${item.applicantName} ｜ ${item.summary}`}>
                   {item.applicantName} ｜ {item.summary || "—"}
+                </span>
+                {/* null 的語意是「未記錄」，不是空部門，所以顯示無值符號而非空白 */}
+                <span className="cell-dept" title={item.department ?? undefined}>
+                  {item.department ?? "—"}
                 </span>
                 <span>{item.category ?? "—"}</span>
                 <span className={`cell-amount${isException ? " text-alert" : ""}`}>

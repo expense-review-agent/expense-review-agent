@@ -142,6 +142,11 @@ textarea:focus-visible {
 .side__item--off:hover {
   background: transparent;
 }
+/* 可點擊但功能尚未完整（唯讀預覽）。刻意不套 --off 的灰階與 not-allowed：
+   那是不可點擊項目的外觀，用在會導覽的連結上會誤導。 */
+.side__item--preview {
+  color: #555;
+}
 .side__item svg {
   width: 14px;
   height: 14px;
@@ -400,12 +405,14 @@ textarea:focus-visible {
 .table__head,
 .table__row {
   display: grid;
-  grid-template-columns: 110px minmax(180px, 1.3fr) 0.7fr 110px 60px 110px 100px 76px;
+  grid-template-columns: 110px minmax(180px, 1.3fr) 76px 0.7fr 110px 60px 110px 100px 76px;
   gap: 8px;
   padding: 9px 14px;
   align-items: center;
   font-size: 12px;
-  min-width: 860px;
+  /* 第 9 欄（部門）讓最小寬度 +76px。窄螢幕沿用 .table__scroll 既有的橫向滾動，
+     刻意不隱藏部門欄——藏起來會讓「搜尋比對的欄位必須可見」在該寬度下不成立。 */
+  min-width: 936px;
 }
 .table__head {
   background: var(--c-subtle);
@@ -441,6 +448,12 @@ textarea:focus-visible {
 }
 .cell-name {
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cell-dept {
+  color: var(--c-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1236,6 +1249,113 @@ a.history__row:hover {
 }
 .choice input {
   accent-color: var(--c-brand);
+}
+
+/* ---- 費用規範（唯讀檢查依據）---- */
+.policy__notice {
+  font-size: 11px;
+  color: var(--c-muted);
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--c-subtle);
+  border: 1px solid var(--c-line);
+}
+.policy__notice--version {
+  background: transparent;
+  border: none;
+  padding: 0 2px;
+  margin-top: 4px;
+}
+.policy__section {
+  background: var(--c-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--c-line);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.policy__section-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+.policy__section-hint {
+  font-size: 11px;
+  color: var(--c-muted);
+  margin-top: 2px;
+}
+.policy__list {
+  list-style: none;
+  margin-top: 12px;
+}
+.policy__item {
+  padding: 10px 0;
+  border-top: 1px solid var(--c-line-soft);
+}
+.policy__item:first-child {
+  border-top: none;
+}
+.policy__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.policy__code {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--c-brand);
+  background: var(--c-brand-bg);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+}
+.policy__name {
+  font-size: 12px;
+  font-weight: 600;
+}
+.policy__ref {
+  font-size: 10px;
+  color: var(--c-faint);
+  margin-left: auto;
+}
+/* 條文原文是組織擁有的內容，原樣呈現；用等寬以外的字體避免看起來像系統訊息 */
+.policy__clause {
+  font-size: 12px;
+  color: var(--c-ink-soft);
+  margin-top: 6px;
+}
+.policy__desc {
+  font-size: 11px;
+  color: var(--c-muted);
+  margin-top: 6px;
+}
+/* 與條文段的 .policy__ref 同位置靠右，兩段的列首看起來才是同一種東西。
+   限定在 .policy__head 底下：疑似註記裡也有 badge，那個要跟著文字走，不能靠右。 */
+.policy__item--builtin .policy__head .policy__badge {
+  margin-left: auto;
+}
+.policy__badge {
+  font-size: 9px;
+  color: var(--c-human-ink);
+  background: var(--c-human-bg);
+  border: 1px solid var(--c-human-line);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+/* 「僅提示疑似」必須讀得出來是保留態度，不是結論——用提醒色而非警示色 */
+.policy__badge--suspicion {
+  color: var(--c-missing-ink);
+  background: var(--c-missing-bg);
+  border-color: var(--c-missing-line);
+}
+.policy__suspicion {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 10px;
+  color: var(--c-missing-ink);
+  margin-top: 8px;
 }
 
 /* ---- 動畫 ---- */

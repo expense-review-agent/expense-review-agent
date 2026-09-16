@@ -115,9 +115,64 @@ test("every key the queue, closed page and history dialog display has copy", () 
     "caseHistory.current",
     "caseHistory.empty",
     "caseHistory.error",
+    // 費用規範（唯讀）
+    "policy.title",
+    "policy.subtitle",
+    "policy.readonly",
+    "policy.currentVersion",
+    "policy.nav.aria",
+    "policy.section.clauses",
+    "policy.section.clauses.hint",
+    "policy.section.guardrails",
+    "policy.section.guardrails.hint",
+    "policy.builtin.badge",
+    "policy.clauseRef.none",
+    "policy.desc.none",
+    "policy.suspicionOnly.badge",
+    "policy.suspicionOnly.note",
+    "policy.loading",
+    "policy.error",
+    "policy.retry",
+    "policy.empty",
   ];
   for (const key of uiKeys) {
     assert.ok(lookupMessage(key), `missing copy for ${key}`);
+  }
+});
+
+test("policy page copy marks suspicion-only rules as suspicion", () => {
+  // 產品層 guardrail：只能標疑似的規則，其呈現必須帶出疑似語氣。這條文案是載具。
+  for (const key of ["policy.suspicionOnly.badge", "policy.suspicionOnly.note"]) {
+    const copy = lookupMessage(key);
+    assert.ok(copy?.includes("疑似"), `${key} must say 疑似`);
+  }
+});
+
+test("built-in guardrails carry a rule description for the policy page", () => {
+  // 內建檢查沒有條文可引用，說明是唯一能解釋「它在檢查什麼」的東西。
+  // 名稱「Agent 可判斷範圍」本身不足以讓審核人員知道發生了什麼。
+  const desc = lookupMessage("rule.guard.eligibility.desc");
+  assert.ok(desc, "missing rule.guard.eligibility.desc");
+  assert.notEqual(desc, lookupMessage("rule.guard.eligibility.name"));
+  // 這條是「資料不足不硬判 NORMAL」的體現，說明必須講出轉交人工這件事
+  assert.ok(desc?.includes("人工"));
+});
+
+test("policy page copy states it is read-only and version-scoped", () => {
+  assert.ok(lookupMessage("policy.readonly")?.includes("唯讀"));
+  assert.ok(lookupMessage("policy.nav.aria")?.includes("唯讀"));
+  // 頁面呈現的是「現在」的依據，不是任何個案當時的依據。
+  assert.ok(lookupMessage("policy.currentVersion")?.includes("目前生效"));
+});
+
+test("policy page copy carries no conclusive or accusatory wording", () => {
+  // 規範頁面只說明每條規則檢查什麼。Agent 不認定違規、不定罪。
+  const forbidden = ["違規", "舞弊", "不法", "造假", "可疑", "風險分數"];
+  for (const [key, copy] of Object.entries(zhTW)) {
+    if (!key.startsWith("policy.")) continue;
+    for (const word of forbidden) {
+      assert.ok(!copy.includes(word), `${key} must not use conclusive wording "${word}"`);
+    }
   }
 });
 

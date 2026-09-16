@@ -127,6 +127,9 @@ async function main(): Promise<void> {
         {
           code: "GUARD_ELIGIBILITY",
           nameKey: "rule.guard.eligibility.name",
+          // 內建安全邊界沒有條文可引用，所以規範頁面只能靠這段說明解釋它在檢查什麼；
+          // 光看名稱「Agent 可判斷範圍」看不出來。
+          descKey: "rule.guard.eligibility.desc",
           layer: "RULE",
           dependsOnConsistency: false,
           isGuardrail: true,
@@ -137,6 +140,7 @@ async function main(): Promise<void> {
           data: {
             code: d.code,
             nameKey: d.nameKey,
+            descKey: d.descKey ?? null,
             layer: d.layer as never,
             dependsOnConsistency: d.dependsOnConsistency ?? false,
             isSuspicionOnly: d.isSuspicionOnly ?? false,
