@@ -37,12 +37,19 @@ export const caseListItemSchema = z.object({
   id: z.string(),
   caseNumber: z.string(),
   applicantName: z.string(),
+  /// 申請當時的部門（時點快照）。來源系統未提供時為 null，語意是「未記錄」。
+  department: z.string().nullable(),
   summary: z.string(),
   category: z.string().nullable(),
   amount: moneySchema.nullable(),
   currency: z.string(),
   expenseDate: z.string().nullable(), // ISO date (YYYY-MM-DD)
+  /// 申請日期：列表的日期欄與排序依據（消費日期仍保留，於詳情抽屜顯示）。
+  applicationDate: z.string().nullable(), // ISO date (YYYY-MM-DD)
   status: classificationSchema.or(caseStatusSchema),
+  /// 案件流程狀態（QUEUED / AWAITING_INFO / DISPOSED ...），與上方 Agent 分類分開。
+  /// 前端依此決定是否顯示處置按鈕。
+  caseStatus: caseStatusSchema,
   recommendedAction: recommendedActionSchema.nullable(),
 });
 export type CaseListItem = z.infer<typeof caseListItemSchema>;
@@ -80,6 +87,8 @@ export const caseDetailSchema = z.object({
   caseNumber: z.string(),
   summary: z.string(),
   status: classificationSchema.or(caseStatusSchema),
+  /// 案件流程狀態，與 Agent 分類分開（見 caseListItemSchema）。
+  caseStatus: caseStatusSchema,
   applicant: z.object({
     name: z.string(),
     department: z.string().nullable(),
@@ -106,6 +115,16 @@ export const caseDetailSchema = z.object({
       reasonParams: z.record(z.string(), z.unknown()).default({}),
     })
     .nullable(),
+  /// 最新一筆 Reviewer 處置（append-only 紀錄的唯讀投影）。尚未被處置時為 null。
+  /// `consistencyFlag` 是處置寫入時固化的值，前端與後端都不得在讀取時重算。
+  disposition: z
+    .object({
+      actorName: z.string(),
+      decidedAt: z.string(), // ISO datetime
+      action: reviewerActionSchema,
+      consistencyFlag: consistencyFlagSchema,
+    })
+    .nullable(),
 });
 export type CaseDetail = z.infer<typeof caseDetailSchema>;
 
@@ -125,17 +144,59 @@ export const relatedCasesResponseSchema = z.object({
 export type RelatedCasesResponse = z.infer<typeof relatedCasesResponseSchema>;
 
 // =============================================================================
+// GET /api/cases/:id/history?scope=applicant|department — 申請人／部門申請紀錄
+//
+// 以案件為查詢起點（申請人沒有穩定 id，姓名放進 URL 會遇到編碼與同名歧義）。
+// 唯讀投影：只有既有案件欄位，沒有風險分數、頻率統計或任何結論性標記——
+// 跨案件風險判定屬 M2，不在此回應內。
+// =============================================================================
+export const caseHistoryScopeSchema = z.enum(["applicant", "department"]);
+export type CaseHistoryScope = z.infer<typeof caseHistoryScopeSchema>;
+
+export const caseHistoryItemSchema = z.object({
+  id: z.string(),
+  caseNumber: z.string(),
+  applicationDate: z.string().nullable(), // ISO date (YYYY-MM-DD)
+  amount: moneySchema.nullable(),
+  currency: z.string(),
+  status: classificationSchema.or(caseStatusSchema),
+  caseStatus: caseStatusSchema,
+  /// 是否為查詢起點的那筆案件（清單一律包含起點案件並標示）。
+  isCurrent: z.boolean(),
+});
+export type CaseHistoryItem = z.infer<typeof caseHistoryItemSchema>;
+
+export const caseHistoryResponseSchema = z.object({
+  scope: caseHistoryScopeSchema,
+  /// 查詢所依據的值（申請人姓名或部門名稱），供前端顯示標題。
+  subject: z.string(),
+  items: z.array(caseHistoryItemSchema),
+});
+export type CaseHistoryResponse = z.infer<typeof caseHistoryResponseSchema>;
+
+// =============================================================================
 // #7 GET /api/policies — 費用規範列表
 // =============================================================================
 export const policyItemSchema = z.object({
   ruleKey: z.string(),
   ruleCode: z.string(),
-  name: z.string(),
+  /// 規則名稱的 i18n key（例 "rule.R1.name"）。欄位名刻意帶 Key：這裡存的一直是
+  /// 識別碼而非顯示文案，叫 name 會誘導呼叫端直接印出 "rule.R1.name"。
+  nameKey: z.string(),
+  /// 規則說明的 i18n key；型錄未提供說明時為 null。
+  descKey: z.string().nullable(),
+  /// 組織條文的參照與原文。產品內建的安全邊界沒有條文可引用，兩者皆為 null——
+  /// 不以系統文案偽造成條文（見 specs/review-api「規範列表」）。
   clauseRef: z.string().nullable(),
-  clauseText: z.string(),
+  clauseText: z.string().nullable(),
   category: z.string().nullable(),
   params: z.record(z.string(), z.unknown()).default({}),
   violationHandling: z.string().nullable(),
+  /// true = 本規則只能表述為「疑似」（R7 重複、R8 拆單）。取自產品擁有的 RuleDefinition，
+  /// **不得**由組織可編輯的 clauseText 字面推斷——那會讓組織改寫條文就關掉 guardrail。
+  isSuspicionOnly: z.boolean(),
+  /// true = 產品內建的安全邊界檢查，非組織條文。
+  isGuardrail: z.boolean(),
 });
 export type PolicyItem = z.infer<typeof policyItemSchema>;
 

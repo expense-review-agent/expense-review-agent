@@ -1,0 +1,58 @@
+/* 設計 token —— 移植自 repo 根目錄的「AI 費用單據初審 Agent.html」參考版型 */
+:root {
+  /* 基底 */
+  --c-ink: #1a1a2e;
+  --c-ink-soft: #333;
+  --c-muted: #888;
+  --c-faint: #999;
+  --c-disabled: #ccc;
+  --c-page: #f0f2f5;
+  --c-surface: #fff;
+  --c-subtle: #fafafa;
+  --c-hover: #f8f8fc;
+  --c-line: #e8e8ee;
+  --c-line-soft: #f5f5f5;
+  --c-topbar-text: #a0a3b1;
+
+  /* 品牌 */
+  --c-brand: #6c5ce7;
+  --c-brand-hover: #5a4bd1;
+  --c-brand-bg: #eef0ff;
+
+  /* 四分類 / 三桶建議 */
+  --c-normal: #27ae60;
+  --c-normal-ink: #1e8449;
+  --c-normal-bg: #e8f8ef;
+  --c-normal-line: #c8e6c9;
+
+  --c-missing: #f39c12;
+  --c-missing-ink: #d68910;
+  --c-missing-bg: #fef9e7;
+  --c-missing-line: #fdeaa8;
+
+  --c-exception: #e74c3c;
+  --c-exception-ink: #c0392b;
+  --c-exception-bg: #fdedec;
+  --c-exception-line: #f5b7b1;
+
+  --c-human: #95a5a6;
+  --c-human-ink: #7f8c8d;
+  --c-human-bg: #f0f0f0;
+  --c-human-line: #ddd;
+
+  /* 字體 */
+  --font-sans: system-ui, -apple-system, "PingFang TC", "Noto Sans TC", sans-serif;
+  --font-mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  /* 尺寸 */
+  --radius-sm: 5px;
+  --radius: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --topbar-h: 48px;
+  --side-w: 190px;
+  --drawer-w: 600px;
+  --shadow-drawer: -4px 0 20px rgba(0, 0, 0, 0.1);
+  --shadow-dialog: 0 12px 40px rgba(0, 0, 0, 0.18);
+  --focus-ring: 0 0 0 3px rgba(108, 92, 231, 0.35);
+}

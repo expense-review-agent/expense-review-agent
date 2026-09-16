@@ -1,4 +1,5 @@
-import { Controller, Get, Param, Query } from "@nestjs/common";
+import { Controller, Get, Param, Query, BadRequestException } from "@nestjs/common";
+import { caseHistoryScopeSchema, caseStatusSchema } from "@expense-review-agent/shared";
 import { CasesService } from "./cases.service";
 
 /**
@@ -19,9 +20,17 @@ export class CasesController {
     return this.casesService.summary();
   }
 
+  /**
+   * status 與 caseStatus 是兩個獨立參數（見 CasesService.list 的註解）：
+   * status 比對分類與流程狀態的合併值，caseStatus 只比對流程狀態。
+   */
   @Get()
-  list(@Query("status") status?: string) {
-    return this.casesService.list(status);
+  list(@Query("status") status?: string, @Query("caseStatus") caseStatus?: string) {
+    const parsedCaseStatus = caseStatus ? caseStatusSchema.safeParse(caseStatus) : null;
+    if (parsedCaseStatus && !parsedCaseStatus.success) {
+      throw new BadRequestException(`Unknown caseStatus "${caseStatus}"`);
+    }
+    return this.casesService.list(status, parsedCaseStatus?.data);
   }
 
   @Get(":id")
@@ -32,5 +41,15 @@ export class CasesController {
   @Get(":id/related")
   related(@Param("id") id: string) {
     return this.casesService.related(id);
+  }
+
+  /** 申請人／部門申請紀錄。scope 必須是 applicant 或 department。 */
+  @Get(":id/history")
+  history(@Param("id") id: string, @Query("scope") scope?: string) {
+    const parsed = caseHistoryScopeSchema.safeParse(scope);
+    if (!parsed.success) {
+      throw new BadRequestException(`scope must be "applicant" or "department"`);
+    }
+    return this.casesService.history(id, parsed.data);
   }
 }

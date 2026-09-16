@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import type {
   CaseSummary,
@@ -6,6 +7,9 @@ import type {
   CaseDetail,
   CaseCheck,
   RelatedCasesResponse,
+  CaseHistoryResponse,
+  CaseHistoryScope,
+  CaseStatus,
 } from "@expense-review-agent/shared";
 
 /**
@@ -50,13 +54,19 @@ export class CasesService {
   }
 
   /**
-   * #3 GET /api/cases?status= — 案件列表（可選 status 篩選）。
-   * status 可能是案件狀態(CaseStatus)或分類(Classification)；這裡用案件的
-   * currentRun.classification 當「狀態」顯示，讓前端看到四分類。DEMO 級簡化：
-   * 直接讀 currentRun 的 classification / recommendedAction。
+   * #3 GET /api/cases?status=&caseStatus= — 案件列表（兩個獨立的篩選參數）。
+   *
+   * - `status`：既有參數。比對的是「有 run 用 Agent 分類、無 run 用流程狀態」的**合併值**，
+   *   前端與既有 spec 都依賴這個語意，不能改。
+   * - `caseStatus`：流程狀態篩選，直接下在 Prisma `where` 上（DB 層篩，不是撈回後過濾）。
+   *   不能用 `status` 篩流程狀態——帶有 Agent run 的案件會因分類覆蓋而篩不到，
+   *   `REVIEW_CLOSED` 的參照案件就是這個情況。
+   *
+   * 兩者同時給定時為 AND。
    */
-  async list(status?: string): Promise<{ items: CaseListItem[] }> {
+  async list(status?: string, caseStatus?: CaseStatus): Promise<{ items: CaseListItem[] }> {
     const cases = await this.prisma.expenseCase.findMany({
+      ...(caseStatus ? { where: { status: caseStatus } } : {}),
       orderBy: { createdAt: "desc" },
       include: {
         currentRun: true,
@@ -73,12 +83,15 @@ export class CasesService {
         id: c.id,
         caseNumber: c.caseNumber,
         applicantName: c.applicantName,
+        department: c.applicantDepartment, // 時點快照；未記錄時為 null
         summary: firstLine?.description ?? firstLine?.category ?? "",
         category: firstLine?.category ?? null,
         amount: this.money(c.declaredTotal),
         currency: c.currency,
         expenseDate: this.isoDate(firstLine?.expenseDate ?? null),
+        applicationDate: this.isoDate(c.applicationDate), // 列表日期欄與排序依據
         status: shownStatus,
+        caseStatus: c.status, // 流程狀態，與分類分開回傳
         recommendedAction: run?.recommendedAction ?? null,
       };
     });
@@ -109,12 +122,20 @@ export class CasesService {
             },
           },
         },
+        // 最新一筆處置（append-only 紀錄的唯讀投影）。只取一筆：詳情只需要「誰讓這個案件
+        // 變成現在這個狀態」；完整歷程屬稽核軌跡頁。
+        dispositions: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          include: { actor: true },
+        },
       },
     });
     if (!c) throw new NotFoundException(`Case ${id} not found`);
 
     const run = c.currentRun;
     const firstLine = c.lines[0];
+    const latestDisposition = c.dispositions[0] ?? null;
 
     const checks: CaseCheck[] = (run?.ruleResults ?? []).map((rr) => ({
       checkKey: rr.checkKey,
@@ -138,9 +159,10 @@ export class CasesService {
       caseNumber: c.caseNumber,
       summary: firstLine?.description ?? firstLine?.category ?? "",
       status: run?.classification ?? c.status,
+      caseStatus: c.status, // 流程狀態，前端依此判斷是否仍待處置
       applicant: {
         name: c.applicantName,
-        department: null, // schema 未存部門於案件層；DEMO 可留 null 或之後補
+        department: c.applicantDepartment, // 時點快照；未記錄時為 null
         amount: this.money(c.declaredTotal),
         category: firstLine?.category ?? null,
         expenseDate: this.isoDate(firstLine?.expenseDate ?? null),
@@ -162,6 +184,16 @@ export class CasesService {
             recommendedAction: run.recommendedAction,
             reasonKey: run.summaryKey ?? `suggestion.${run.classification}`,
             reasonParams: (run.summaryParams as Record<string, unknown>) ?? {},
+          }
+        : null,
+      // 徽章直接讀處置紀錄的固化值。**不得**在此呼叫 deriveConsistencyFlag 重算——
+      // Policy 或規則改版會讓歷史徽章翻臉（CLAUDE.md 已定案的決策）。
+      disposition: latestDisposition
+        ? {
+            actorName: latestDisposition.actor.displayName,
+            decidedAt: latestDisposition.createdAt.toISOString(),
+            action: latestDisposition.action,
+            consistencyFlag: latestDisposition.consistencyFlag,
           }
         : null,
     };
@@ -193,5 +225,63 @@ export class CasesService {
       }
     }
     return { related };
+  }
+
+  /**
+   * GET /api/cases/:id/history?scope=applicant|department — 申請人／部門申請紀錄。
+   *
+   * 以**案件為查詢起點**，而不是把姓名放進 URL：申請人沒有穩定識別（`applicantCode`
+   * 是 optional），姓名進 URL 會遇到編碼與同名歧義，也把「用哪個欄位比對」這個領域
+   * 決定推給前端。有 `applicantCode` 時優先用它，否則退回姓名。
+   *
+   * 唯讀投影：只有既有案件欄位。**不得**加入風險分數、頻率統計或任何結論性標記——
+   * 跨案件風險判定屬 M2（specs/review-api 明文禁止）。
+   */
+  async history(id: string, scope: CaseHistoryScope): Promise<CaseHistoryResponse> {
+    const origin = await this.prisma.expenseCase.findUnique({ where: { id } });
+    if (!origin) throw new NotFoundException(`Case ${id} not found`);
+
+    let where: Prisma.ExpenseCaseWhereInput;
+    let subject: string;
+    if (scope === "department") {
+      if (!origin.applicantDepartment?.trim()) {
+        // 前端本來就不該讓沒有部門的欄位可點選；這裡是契約層的防線。
+        throw new BadRequestException("Case has no department recorded");
+      }
+      subject = origin.applicantDepartment;
+      where = {
+        organizationId: origin.organizationId,
+        applicantDepartment: origin.applicantDepartment,
+      };
+    } else {
+      subject = origin.applicantName;
+      where = {
+        organizationId: origin.organizationId,
+        ...(origin.applicantCode
+          ? { applicantCode: origin.applicantCode }
+          : { applicantName: origin.applicantName }),
+      };
+    }
+
+    const cases = await this.prisma.expenseCase.findMany({
+      where,
+      orderBy: [{ applicationDate: "desc" }, { caseNumber: "asc" }],
+      include: { currentRun: true },
+    });
+
+    return {
+      scope,
+      subject,
+      items: cases.map((c) => ({
+        id: c.id,
+        caseNumber: c.caseNumber,
+        applicationDate: this.isoDate(c.applicationDate),
+        amount: this.money(c.declaredTotal),
+        currency: c.currency,
+        status: c.currentRun?.classification ?? c.status,
+        caseStatus: c.status,
+        isCurrent: c.id === origin.id,
+      })),
+    };
   }
 }
