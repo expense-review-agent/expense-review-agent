@@ -83,6 +83,21 @@ export const zhTW: Readonly<Record<string, string>> = {
   "rule.R7.FAIL": "與另一筆案件的單號、金額、日期相同，疑似重複申報，需人工確認。",
   "rule.R8.PASS": "未發現疑似拆單。",
   "rule.R8.FAIL": "同申請人、同店家於短期內多筆申報，加總超過門檻，疑似拆單，需人工確認。",
+  "rule.R3.PASS": "大額核准文件齊全。",
+  "rule.R3.FAIL": "金額達大額門檻，但未附簽准書與合約影本。",
+  "rule.R9.PASS": "發票買方統編正確。",
+  "rule.R9.FAIL": "發票買方統編與本公司統編不符，請申請人換開發票。",
+  "rule.R10.PASS": "多張憑證加總與申報總額一致。",
+  "rule.R10.FAIL": "多張憑證加總與申報總額不符。",
+  // 依賴一致性的規則在雙假設評估分歧時的判定理由（見 gate.* 的分歧原因）
+  "rule.R1.GATED": "申報值與單據值分別評估會得到不同結論，暫不判定，需人工確認。",
+
+  // ---- 雙假設評估的分歧原因（gateReasonKey）----
+  "gate.amountMismatch": "申報金額與單據金額不一致，兩個基準的結論分歧。",
+
+  // ---- 比對層訊息 ----
+  "match.unmatchedReceipt": "有單據對不上任何申報項目。",
+
   "rule.guard.eligibility.ABSTAIN":
     "本案超出 Agent 目前可判斷的範圍（例如非 TWD 幣別），已主動轉交人工。",
   // 規範頁面用的規則說明（描述這條檢查做什麼，與上面的個案判定訊息不同）

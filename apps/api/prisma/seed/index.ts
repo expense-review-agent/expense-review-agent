@@ -125,6 +125,40 @@ async function main(): Promise<void> {
           messageKeyPrefix: "rule.R7",
         },
         {
+          code: "R3",
+          nameKey: "rule.R3.name",
+          layer: "RULE",
+          // 門檻比的是金額，申報與單據不一致時兩個基準會得出不同結論 → 需雙假設評估
+          dependsOnConsistency: true,
+          messageKeyPrefix: "rule.R3",
+          paramsSchemaKey: "RequiredAttachmentParams",
+        },
+        {
+          code: "R8",
+          nameKey: "rule.R8.name",
+          layer: "RULE",
+          dependsOnConsistency: false,
+          // 拆單只能是「疑似」——產品層 guardrail，組織設定不可覆寫（CLAUDE.md 領域規則 3）
+          isSuspicionOnly: true,
+          messageKeyPrefix: "rule.R8",
+          paramsSchemaKey: "SplitWindowParams",
+        },
+        {
+          code: "R9",
+          nameKey: "rule.R9.name",
+          layer: "RULE",
+          dependsOnConsistency: false,
+          messageKeyPrefix: "rule.R9",
+          paramsSchemaKey: "BuyerTaxIdParams",
+        },
+        {
+          code: "R10",
+          nameKey: "rule.R10.name",
+          layer: "MATCH",
+          dependsOnConsistency: true,
+          messageKeyPrefix: "rule.R10",
+        },
+        {
           code: "GUARD_ELIGIBILITY",
           nameKey: "rule.guard.eligibility.name",
           // 內建安全邊界沒有條文可引用，所以規範頁面只能靠這段說明解釋它在檢查什麼；
@@ -205,6 +239,47 @@ async function main(): Promise<void> {
         clauseRef: "§3.4",
         clauseText: "同單號＋同額＋同日 視為疑似重複",
         params: {},
+      },
+    });
+
+    const ruleR3 = await tx.policyRule.create({
+      data: {
+        policyVersionId: policyVersion.id,
+        ruleDefinitionId: defByCode("R3").id,
+        ruleKey: "R3-approval",
+        clauseRef: "§2.3",
+        clauseText: "單筆金額 ≥ NT$50,000 須附簽准書與合約影本",
+        params: { threshold: "50000", requires: ["APPROVAL", "CONTRACT"] },
+      },
+    });
+    const ruleR8 = await tx.policyRule.create({
+      data: {
+        policyVersionId: policyVersion.id,
+        ruleDefinitionId: defByCode("R8").id,
+        ruleKey: "R8-split",
+        clauseRef: "§3.5",
+        clauseText: "同申請人、同店家 7 日內多筆申報，加總逾 NT$10,000 視為疑似拆單",
+        params: { windowDays: "7", aggregateThreshold: "10000" },
+      },
+    });
+    const ruleR9 = await tx.policyRule.create({
+      data: {
+        policyVersionId: policyVersion.id,
+        ruleDefinitionId: defByCode("R9").id,
+        ruleKey: "R9-taxid",
+        clauseRef: "§2.4",
+        clauseText: "發票買方統一編號須為本公司統編 12345678",
+        params: { expectedTaxId: "12345678" },
+      },
+    });
+    const ruleR10 = await tx.policyRule.create({
+      data: {
+        policyVersionId: policyVersion.id,
+        ruleDefinitionId: defByCode("R10").id,
+        ruleKey: "R10-sum",
+        clauseRef: "§2.5",
+        clauseText: "多張憑證的加總須等於申報總額",
+        params: { tolerance: "0" },
       },
     });
 
@@ -493,7 +568,9 @@ async function main(): Promise<void> {
     }
 
     // =====================================================================
-    // CASE 3 — MISSING, R4 missing invoice, REQUEST_INFO
+    // CASE 3 — MISSING, large amount missing BOTH invoice (R4) and
+    //          approval/contract (R3) — 一次列全缺口，不是逐條退件
+    // ---------------------------------------------------------------------
     // =====================================================================
     {
       const { c, chain } = await makeCase({
@@ -502,7 +579,7 @@ async function main(): Promise<void> {
         applicantDepartment: "研發部",
         status: "AWAITING_INFO",
         applicationDate: "2026-08-22",
-        declaredTotal: "6200",
+        declaredTotal: "62000",
         category: "辦公用品",
         expenseDate: "2026-08-22",
         vendor: "3C 賣場",
@@ -536,17 +613,48 @@ async function main(): Promise<void> {
           outcome: "FAIL",
           messageKey: "rule.R4.FAIL",
           evaluationBasis: "SINGLE",
-          evaluationDetail: { threshold: 5000, declared: 6200, hasInvoice: false },
+          evaluationDetail: { threshold: 5000, declared: 62000, hasInvoice: false },
         },
       });
       await tx.evidence.create({
         data: {
           ruleResultId: rr.id,
           policyRuleId: ruleR4.id,
-          snippet: "金額 6,200 ≥ 5,000 門檻，僅附收據無正式發票。",
+          snippet: "金額 62,000 ≥ 5,000 門檻，僅附收據無正式發票。",
         },
       });
-      await appendAudit(tx, chain, "RUN_COMPLETED", { classification: "MISSING", rule: "R4" });
+      // R3 依賴一致性，但本案缺單據 → 沒有單據基準可比，只能以申報值評估
+      // （DECLARED_ONLY）。缺口要一次列全，不能只報 R4 讓申請人來回補兩趟。
+      const rr3 = await tx.ruleResult.create({
+        data: {
+          runId: run.id,
+          checkKey: "R3-approval",
+          ruleDefinitionId: defByCode("R3").id,
+          policyRuleId: ruleR3.id,
+          ruleCode: "R3",
+          outcome: "FAIL",
+          severity: "MEDIUM",
+          messageKey: "rule.R3.FAIL",
+          evaluationBasis: "DECLARED_ONLY",
+          evaluationDetail: {
+            threshold: 50000,
+            declared: 62000,
+            hasApproval: false,
+            hasContract: false,
+          },
+        },
+      });
+      await tx.evidence.create({
+        data: {
+          ruleResultId: rr3.id,
+          policyRuleId: ruleR3.id,
+          snippet: "金額 62,000 ≥ 50,000 門檻，未附簽准書與合約影本。",
+        },
+      });
+      await appendAudit(tx, chain, "RUN_COMPLETED", {
+        classification: "MISSING",
+        rules: ["R4", "R3"],
+      });
     }
 
     // =====================================================================
@@ -607,6 +715,668 @@ async function main(): Promise<void> {
       await appendAudit(tx, chain, "RUN_COMPLETED", {
         classification: "HUMAN",
         abstain: "UNSUPPORTED_CURRENCY",
+      });
+    }
+
+    // =====================================================================
+    // CASE 5 — EXCEPTION, R1 lodging over-limit
+    // 條文與差額都要能指回證據，主管才看得出「超多少、憑哪一條」。
+    // =====================================================================
+    {
+      const { c, chain } = await makeCase({
+        caseNumber: "EXP-2026-2005",
+        applicantName: "林志豪",
+        applicantDepartment: "業務部",
+        status: "QUEUED",
+        applicationDate: "2026-08-26",
+        declaredTotal: "6000",
+        category: "住宿",
+        expenseDate: "2026-08-24",
+        vendor: "城市商旅",
+        description: "出差住宿一晚",
+        docNo: "INV-2026-0824-11",
+      });
+      const run = await tx.reviewRun.create({
+        data: {
+          caseId: c.id,
+          roundNo: 1,
+          status: "SUCCEEDED",
+          policyVersionId: policyVersion.id,
+          policyResolution: "EXACT",
+          engineVersion: ENGINE_VERSION,
+          matchVerdict: "CONSISTENT",
+          classification: "EXCEPTION",
+          recommendedAction: "MANUAL_REVIEW",
+          triggerStage: "RULES",
+          confidenceLevel: "HIGH",
+        },
+      });
+      await tx.expenseCase.update({ where: { id: c.id }, data: { currentRunId: run.id } });
+      const rr = await tx.ruleResult.create({
+        data: {
+          runId: run.id,
+          checkKey: "R1-lodging",
+          ruleDefinitionId: defByCode("R1").id,
+          policyRuleId: ruleR1.id,
+          ruleCode: "R1",
+          outcome: "FAIL",
+          severity: "MEDIUM",
+          messageKey: "rule.R1.FAIL",
+          // 申報與單據一致，兩個基準會得到同一結論 → BOTH_AGREE（非 SINGLE）
+          evaluationBasis: "BOTH_AGREE",
+          evaluationDetail: { limit: 4000, actual: 6000, excess: 2000, nights: 1 },
+        },
+      });
+      await tx.evidence.create({
+        data: {
+          ruleResultId: rr.id,
+          policyRuleId: ruleR1.id,
+          snippet: "住宿一晚 6,000，逾 §4.2 每晚上限 4,000，超出 2,000。",
+        },
+      });
+      await appendAudit(tx, chain, "RUN_COMPLETED", { classification: "EXCEPTION", rule: "R1" });
+    }
+
+    // =====================================================================
+    // CASE 6 — EXCEPTION, R5 mismatch driving a DIVERGENT dual-basis gate
+    //
+    // 這是整份 seed 最重要的一筆：申報 4,200 / 單據 3,900 不一致，而 R1 的門檻
+    // 恰好落在兩者之間（4,000）——以申報值評估會 FAIL，以單據值評估會 PASS。
+    // 結論分歧時**不得靜默跳過 R1**（那是漏判），必須輸出 GATED 並附 gateReasonKey。
+    // =====================================================================
+    {
+      const { c, chain } = await makeCase({
+        caseNumber: "EXP-2026-2006",
+        applicantName: "吳雅婷",
+        applicantDepartment: "行銷部",
+        status: "QUEUED",
+        applicationDate: "2026-08-27",
+        declaredTotal: "4200",
+        category: "住宿",
+        expenseDate: "2026-08-25",
+        vendor: "海濱旅店",
+        description: "客戶拜訪住宿",
+        docNo: "INV-2026-0825-42",
+      });
+      const line = await tx.expenseLine.findFirstOrThrow({ where: { caseId: c.id, lineNo: 1 } });
+      const receipt = await tx.receipt.create({
+        data: {
+          caseId: c.id,
+          extractionSource: "STRUCTURED_FIXTURE",
+          docNo: "INV-2026-0825-42",
+          issueDate: new Date("2026-08-25"),
+          amount: new Prisma.Decimal("3900"),
+          currency: "TWD",
+          vendor: "海濱旅店",
+          category: "住宿",
+          minConfidenceLevel: "HIGH",
+        },
+      });
+      const run = await tx.reviewRun.create({
+        data: {
+          caseId: c.id,
+          roundNo: 1,
+          status: "SUCCEEDED",
+          policyVersionId: policyVersion.id,
+          policyResolution: "EXACT",
+          engineVersion: ENGINE_VERSION,
+          matchVerdict: "INCONSISTENT",
+          declaredCount: 1,
+          receiptCount: 1,
+          classification: "EXCEPTION",
+          recommendedAction: "MANUAL_REVIEW",
+          triggerStage: "MATCHING",
+          confidenceLevel: "HIGH",
+          inputSnapshot: {
+            caseNumber: "EXP-2026-2006",
+            declaredTotal: "4200",
+            currency: "TWD",
+            lines: [{ lineNo: 1, docNo: "INV-2026-0825-42", amount: "4200" }],
+            receipts: [{ docNo: "INV-2026-0825-42", amount: "3900" }],
+          },
+        },
+      });
+      await tx.expenseCase.update({ where: { id: c.id }, data: { currentRunId: run.id } });
+      await tx.receiptLineLink.create({
+        data: {
+          runId: run.id,
+          lineId: line.id,
+          receiptId: receipt.id,
+          matchScore: new Prisma.Decimal("0.9"),
+          matchedBy: "docNo",
+        },
+      });
+
+      // 比對層：逐欄金額不一致
+      const mr = await tx.matchResult.create({
+        data: {
+          runId: run.id,
+          scope: "LINE_FIELD",
+          outcome: "MISMATCHED",
+          lineId: line.id,
+          receiptId: receipt.id,
+          fieldKey: "amount",
+          declaredValue: "4200",
+          receiptValue: "3900",
+          diffAmount: new Prisma.Decimal("300"),
+          messageKey: "rule.R5.FAIL",
+        },
+      });
+      await tx.evidence.create({
+        data: {
+          matchResultId: mr.id,
+          snippet: "申報 4,200 與單據 3,900 不一致，差額 300。",
+        },
+      });
+      const rr5 = await tx.ruleResult.create({
+        data: {
+          runId: run.id,
+          checkKey: "R5-amount",
+          ruleDefinitionId: defByCode("R5").id,
+          ruleCode: "R5",
+          outcome: "FAIL",
+          severity: "MEDIUM",
+          messageKey: "rule.R5.FAIL",
+          evaluationBasis: "SINGLE",
+          evaluationDetail: { declared: "4200", receipt: "3900", diff: "300" },
+        },
+      });
+      await tx.evidence.create({
+        data: {
+          ruleResultId: rr5.id,
+          snippet: "申報金額 4,200；單據金額 3,900。",
+        },
+      });
+
+      // 規則層：R1 依賴一致性，兩個基準結論分歧 → GATED（絕不可靜默跳過）
+      const rr1 = await tx.ruleResult.create({
+        data: {
+          runId: run.id,
+          checkKey: "R1-lodging",
+          ruleDefinitionId: defByCode("R1").id,
+          policyRuleId: ruleR1.id,
+          ruleCode: "R1",
+          outcome: "GATED",
+          severity: "MEDIUM",
+          messageKey: "rule.R1.GATED",
+          evaluationBasis: "DIVERGENT",
+          // 治理 CHECK：outcome = GATED 必附 gateReasonKey
+          gateReasonKey: "gate.amountMismatch",
+          gatedByMatchId: mr.id,
+          evaluationDetail: {
+            limit: 4000,
+            declaredBasis: { actual: 4200, outcome: "FAIL" },
+            receiptBasis: { actual: 3900, outcome: "PASS" },
+          },
+        },
+      });
+      await tx.evidence.create({
+        data: {
+          ruleResultId: rr1.id,
+          policyRuleId: ruleR1.id,
+          snippet:
+            "以申報值 4,200 評估逾 §4.2 上限 4,000；以單據值 3,900 評估則未逾。兩者分歧，暫不判定。",
+        },
+      });
+      await appendAudit(tx, chain, "RUN_COMPLETED", {
+        classification: "EXCEPTION",
+        rules: ["R5", "R1(GATED)"],
+      });
+    }
+
+    // =====================================================================
+    // CASE 7 + 8 — EXCEPTION, R8 suspected split (cross-case pair)
+    //
+    // 跨案件規則單獨一筆永遠不會觸發，所以這兩筆必須成對存在：同申請人、同店家、
+    // 7 日內，各自低於 §3.5 的 10,000 門檻，加總 11,500 才超過。
+    // R8 的 isSuspicionOnly = true → 措辭只能是「疑似」，不得表述為認定拆單。
+    // =====================================================================
+    {
+      const pair = [
+        {
+          caseNumber: "EXP-2026-2007",
+          date: "2026-08-10",
+          amount: "6000",
+          docNo: "INV-2026-0810-31",
+        },
+        {
+          caseNumber: "EXP-2026-2008",
+          date: "2026-08-14",
+          amount: "5500",
+          docNo: "INV-2026-0814-08",
+        },
+      ];
+      const built: Array<{ id: string; caseNumber: string; ruleResultId: string }> = [];
+
+      for (const item of pair) {
+        const { c, chain } = await makeCase({
+          caseNumber: item.caseNumber,
+          applicantName: "王俊傑",
+          applicantDepartment: "資訊部",
+          status: "QUEUED",
+          applicationDate: item.date,
+          declaredTotal: item.amount,
+          category: "辦公用品",
+          expenseDate: item.date,
+          vendor: "文具行 A",
+          description: "部門文具補充",
+          docNo: item.docNo,
+        });
+        const run = await tx.reviewRun.create({
+          data: {
+            caseId: c.id,
+            roundNo: 1,
+            status: "SUCCEEDED",
+            policyVersionId: policyVersion.id,
+            policyResolution: "EXACT",
+            engineVersion: ENGINE_VERSION,
+            matchVerdict: "CONSISTENT",
+            classification: "EXCEPTION",
+            recommendedAction: "MANUAL_REVIEW",
+            triggerStage: "RULES",
+            confidenceLevel: "HIGH",
+          },
+        });
+        await tx.expenseCase.update({ where: { id: c.id }, data: { currentRunId: run.id } });
+        const rr = await tx.ruleResult.create({
+          data: {
+            runId: run.id,
+            checkKey: "R8-split",
+            ruleDefinitionId: defByCode("R8").id,
+            policyRuleId: ruleR8.id,
+            ruleCode: "R8",
+            outcome: "FAIL",
+            severity: "MEDIUM",
+            messageKey: "rule.R8.FAIL",
+            evaluationBasis: "SINGLE",
+            evaluationDetail: {
+              windowDays: 7,
+              aggregateThreshold: 10000,
+              aggregate: 11500,
+              entries: pair.map((x) => ({ caseNumber: x.caseNumber, amount: x.amount })),
+            },
+          },
+        });
+        await appendAudit(tx, chain, "RUN_COMPLETED", { classification: "EXCEPTION", rule: "R8" });
+        built.push({ id: c.id, caseNumber: item.caseNumber, ruleResultId: rr.id });
+      }
+
+      // 證據互指對方：兩筆都建好後才掛，否則第二筆還不存在。
+      for (const [i, entry] of built.entries()) {
+        const other = built[(i + 1) % built.length];
+        await tx.evidence.create({
+          data: {
+            ruleResultId: entry.ruleResultId,
+            policyRuleId: ruleR8.id,
+            relatedCaseId: other.id,
+            snippet:
+              `與 ${other.caseNumber}（同申請人、同店家「文具行 A」，相隔 4 日）加總 11,500，` +
+              "逾 §3.5 的 10,000 門檻，疑似拆單，需人工確認。",
+          },
+        });
+      }
+    }
+
+    // =====================================================================
+    // CASE 9 — EXCEPTION, R10 multi-receipt sum difference (Tier 1 亮點)
+    // 三張憑證加總 9,400，申報總額 10,000，差 600 —— 逐張看都正常，只有加總才看得出來。
+    // =====================================================================
+    {
+      const { c, chain } = await makeCase({
+        caseNumber: "EXP-2026-2009",
+        applicantName: "張淑芬",
+        applicantDepartment: "行政部",
+        status: "QUEUED",
+        applicationDate: "2026-08-28",
+        declaredTotal: "10000",
+        category: "會議餐費",
+        expenseDate: "2026-08-26",
+        vendor: "外燴服務",
+        description: "季度會議餐飲（三張憑證）",
+      });
+      const line = await tx.expenseLine.findFirstOrThrow({ where: { caseId: c.id, lineNo: 1 } });
+
+      const receiptSpecs = [
+        { docNo: "INV-2026-0826-01", amount: "3000" },
+        { docNo: "INV-2026-0826-02", amount: "3200" },
+        { docNo: "INV-2026-0826-03", amount: "3200" },
+      ];
+      const receipts = [];
+      for (const r of receiptSpecs) {
+        receipts.push(
+          await tx.receipt.create({
+            data: {
+              caseId: c.id,
+              extractionSource: "STRUCTURED_FIXTURE",
+              docNo: r.docNo,
+              issueDate: new Date("2026-08-26"),
+              amount: new Prisma.Decimal(r.amount),
+              currency: "TWD",
+              vendor: "外燴服務",
+              category: "會議餐費",
+              minConfidenceLevel: "HIGH",
+            },
+          }),
+        );
+      }
+
+      const run = await tx.reviewRun.create({
+        data: {
+          caseId: c.id,
+          roundNo: 1,
+          status: "SUCCEEDED",
+          policyVersionId: policyVersion.id,
+          policyResolution: "EXACT",
+          engineVersion: ENGINE_VERSION,
+          matchVerdict: "INCONSISTENT",
+          declaredCount: 1,
+          receiptCount: 3,
+          sumDifference: new Prisma.Decimal("600"),
+          classification: "EXCEPTION",
+          recommendedAction: "MANUAL_REVIEW",
+          triggerStage: "MATCHING",
+          confidenceLevel: "HIGH",
+          inputSnapshot: {
+            caseNumber: "EXP-2026-2009",
+            declaredTotal: "10000",
+            currency: "TWD",
+            receipts: receiptSpecs,
+          },
+        },
+      });
+      await tx.expenseCase.update({ where: { id: c.id }, data: { currentRunId: run.id } });
+      for (const r of receipts) {
+        await tx.receiptLineLink.create({
+          data: {
+            runId: run.id,
+            lineId: line.id,
+            receiptId: r.id,
+            matchScore: new Prisma.Decimal("0.8"),
+            matchedBy: "amountSum",
+          },
+        });
+      }
+
+      const mr = await tx.matchResult.create({
+        data: {
+          runId: run.id,
+          scope: "TOTAL_SUM",
+          outcome: "MISMATCHED",
+          fieldKey: "amount",
+          declaredValue: "10000",
+          receiptValue: "9400",
+          diffAmount: new Prisma.Decimal("600"),
+          messageKey: "rule.R10.FAIL",
+        },
+      });
+      await tx.evidence.create({
+        data: {
+          matchResultId: mr.id,
+          snippet: "三張憑證 3,000 + 3,200 + 3,200 = 9,400，與申報總額 10,000 差 600。",
+        },
+      });
+      const rr = await tx.ruleResult.create({
+        data: {
+          runId: run.id,
+          checkKey: "R10-sum",
+          ruleDefinitionId: defByCode("R10").id,
+          policyRuleId: ruleR10.id,
+          ruleCode: "R10",
+          outcome: "FAIL",
+          severity: "MEDIUM",
+          messageKey: "rule.R10.FAIL",
+          evaluationBasis: "SINGLE",
+          evaluationDetail: { declaredTotal: "10000", receiptSum: "9400", difference: "600" },
+        },
+      });
+      await tx.evidence.create({
+        data: {
+          ruleResultId: rr.id,
+          policyRuleId: ruleR10.id,
+          snippet: "憑證加總 9,400 ≠ 申報總額 10,000，差額 600。",
+        },
+      });
+      await appendAudit(tx, chain, "RUN_COMPLETED", { classification: "EXCEPTION", rule: "R10" });
+    }
+
+    // =====================================================================
+    // CASE 10 — MISSING, R9 buyer tax id mismatch → 請申請人換開發票
+    // 這是「缺件」而非「例外」：發票本身有效，只是抬頭開錯，補正即可。
+    // =====================================================================
+    {
+      const { c, chain } = await makeCase({
+        caseNumber: "EXP-2026-2010",
+        applicantName: "鄭偉成",
+        applicantDepartment: "研發部",
+        status: "QUEUED",
+        applicationDate: "2026-08-29",
+        declaredTotal: "8800",
+        category: "軟體訂閱",
+        expenseDate: "2026-08-27",
+        vendor: "雲端服務商",
+        description: "開發工具年費",
+        docNo: "INV-2026-0827-55",
+      });
+      const receipt = await tx.receipt.create({
+        data: {
+          caseId: c.id,
+          extractionSource: "STRUCTURED_FIXTURE",
+          docNo: "INV-2026-0827-55",
+          issueDate: new Date("2026-08-27"),
+          amount: new Prisma.Decimal("8800"),
+          currency: "TWD",
+          vendor: "雲端服務商",
+          category: "軟體訂閱",
+          buyerTaxId: "87654321",
+          minConfidenceLevel: "HIGH",
+        },
+      });
+      await tx.extractedField.create({
+        data: {
+          receiptId: receipt.id,
+          fieldKey: "buyerTaxId",
+          rawText: "87654321",
+          normalizedValue: "87654321",
+          isRecognized: true,
+          confidenceLevel: "HIGH",
+          confidenceScore: new Prisma.Decimal("0.9800"),
+        },
+      });
+      const run = await tx.reviewRun.create({
+        data: {
+          caseId: c.id,
+          roundNo: 1,
+          status: "SUCCEEDED",
+          policyVersionId: policyVersion.id,
+          policyResolution: "EXACT",
+          engineVersion: ENGINE_VERSION,
+          matchVerdict: "CONSISTENT",
+          declaredCount: 1,
+          receiptCount: 1,
+          classification: "MISSING",
+          recommendedAction: "REQUEST_INFO",
+          triggerStage: "RULES",
+          confidenceLevel: "HIGH",
+        },
+      });
+      await tx.expenseCase.update({ where: { id: c.id }, data: { currentRunId: run.id } });
+      const rr = await tx.ruleResult.create({
+        data: {
+          runId: run.id,
+          checkKey: "R9-taxid",
+          ruleDefinitionId: defByCode("R9").id,
+          policyRuleId: ruleR9.id,
+          ruleCode: "R9",
+          outcome: "FAIL",
+          severity: "LOW",
+          messageKey: "rule.R9.FAIL",
+          evaluationBasis: "SINGLE",
+          evaluationDetail: { expected: "12345678", actual: "87654321" },
+        },
+      });
+      await tx.evidence.create({
+        data: {
+          ruleResultId: rr.id,
+          policyRuleId: ruleR9.id,
+          snippet: "發票買方統編 87654321，與 §2.4 規定的本公司統編 12345678 不符。",
+        },
+      });
+      await appendAudit(tx, chain, "RUN_COMPLETED", { classification: "MISSING", rule: "R9" });
+    }
+
+    // =====================================================================
+    // CASE 11 — HUMAN, unmatched receipt + low-confidence key field
+    //
+    // 兩件事在同一筆案件上演示（tasks 4.2 未匹配單據 / 4.4 低信心欄位）：
+    //   1. 合併檔裡有一張單據對不上任何申報項目 → UNMATCHED_RECEIPT
+    //   2. 該張單據的關鍵欄位 docNo 根本沒認出來（isRecognized = false、NONE）
+    // 關鍵欄位信心不足時**不得硬判 NORMAL**（CLAUDE.md 領域規則 4），
+    // Agent 主動退讓 ABSTAIN(LOW_CONFIDENCE) → HUMAN。
+    // =====================================================================
+    {
+      const { c, chain } = await makeCase({
+        caseNumber: "EXP-2026-2011",
+        applicantName: "許雅琳",
+        applicantDepartment: "行政部",
+        status: "QUEUED",
+        applicationDate: "2026-08-30",
+        declaredTotal: "2400",
+        category: "交通費",
+        expenseDate: "2026-08-28",
+        vendor: "計程車行",
+        description: "客戶拜訪交通（掃描檔含多張單據）",
+        docNo: "INV-2026-0828-19",
+      });
+      const line = await tx.expenseLine.findFirstOrThrow({ where: { caseId: c.id, lineNo: 1 } });
+
+      // 對得上的那張
+      const matchedReceipt = await tx.receipt.create({
+        data: {
+          caseId: c.id,
+          extractionSource: "STRUCTURED_FIXTURE",
+          docNo: "INV-2026-0828-19",
+          issueDate: new Date("2026-08-28"),
+          amount: new Prisma.Decimal("2400"),
+          currency: "TWD",
+          vendor: "計程車行",
+          category: "交通費",
+          minConfidenceLevel: "HIGH",
+        },
+      });
+      // 對不上的那張：單號沒認出來，金額也不屬於任何申報項目
+      const strayReceipt = await tx.receipt.create({
+        data: {
+          caseId: c.id,
+          extractionSource: "STRUCTURED_FIXTURE",
+          docNo: null,
+          issueDate: new Date("2026-08-28"),
+          amount: new Prisma.Decimal("1350"),
+          currency: "TWD",
+          vendor: "未能辨識",
+          minConfidenceLevel: "NONE",
+        },
+      });
+      await tx.extractedField.create({
+        data: {
+          receiptId: strayReceipt.id,
+          fieldKey: "docNo",
+          rawText: "IN\u00a0V-2026-08\u25a1\u25a1-\u25a1\u25a1",
+          normalizedValue: null,
+          isRecognized: false,
+          confidenceLevel: "NONE",
+          confidenceScore: new Prisma.Decimal("0.1200"),
+        },
+      });
+      await tx.extractedField.create({
+        data: {
+          receiptId: strayReceipt.id,
+          fieldKey: "vendor",
+          rawText: "\u25a1\u25a1\u8eca\u884c",
+          normalizedValue: null,
+          isRecognized: false,
+          confidenceLevel: "LOW",
+          confidenceScore: new Prisma.Decimal("0.3100"),
+        },
+      });
+
+      const run = await tx.reviewRun.create({
+        data: {
+          caseId: c.id,
+          roundNo: 1,
+          status: "SUCCEEDED",
+          policyVersionId: policyVersion.id,
+          policyResolution: "EXACT",
+          engineVersion: ENGINE_VERSION,
+          matchVerdict: "PARTIAL",
+          declaredCount: 1,
+          receiptCount: 2,
+          classification: "HUMAN",
+          recommendedAction: "MANUAL_REVIEW",
+          triggerStage: "EXTRACTION",
+          confidenceLevel: "LOW",
+          abstainReason: "LOW_CONFIDENCE",
+          inputSnapshot: {
+            caseNumber: "EXP-2026-2011",
+            declaredTotal: "2400",
+            currency: "TWD",
+            receipts: [
+              { docNo: "INV-2026-0828-19", amount: "2400" },
+              { docNo: null, amount: "1350", recognized: false },
+            ],
+          },
+        },
+      });
+      await tx.expenseCase.update({ where: { id: c.id }, data: { currentRunId: run.id } });
+      await tx.receiptLineLink.create({
+        data: {
+          runId: run.id,
+          lineId: line.id,
+          receiptId: matchedReceipt.id,
+          matchScore: new Prisma.Decimal("1"),
+          matchedBy: "docNo",
+        },
+      });
+
+      const mr = await tx.matchResult.create({
+        data: {
+          runId: run.id,
+          scope: "UNMATCHED_RECEIPT",
+          outcome: "UNMATCHED",
+          receiptId: strayReceipt.id,
+          declaredValue: null,
+          receiptValue: "1350",
+          messageKey: "match.unmatchedReceipt",
+        },
+      });
+      await tx.evidence.create({
+        data: {
+          matchResultId: mr.id,
+          snippet: "掃描檔第 2 頁有一張 1,350 的單據，對不上任何申報項目，單號未能辨識。",
+        },
+      });
+
+      const rr = await tx.ruleResult.create({
+        data: {
+          runId: run.id,
+          checkKey: "GUARD_ELIGIBILITY",
+          ruleDefinitionId: defByCode("GUARD_ELIGIBILITY").id,
+          ruleCode: "GUARD_ELIGIBILITY",
+          outcome: "ABSTAIN",
+          messageKey: "rule.guard.eligibility.ABSTAIN",
+          evaluationBasis: "SINGLE",
+          // 治理 CHECK：outcome = ABSTAIN 必附 abstainReason
+          abstainReason: "LOW_CONFIDENCE",
+        },
+      });
+      await tx.evidence.create({
+        data: {
+          ruleResultId: rr.id,
+          snippet: "關鍵欄位「單號」未能辨識（信心 NONE），資料不足以判定，轉人工。",
+        },
+      });
+      await appendAudit(tx, chain, "RUN_COMPLETED", {
+        classification: "HUMAN",
+        abstain: "LOW_CONFIDENCE",
       });
     }
 
