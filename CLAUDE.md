@@ -1,149 +1,212 @@
 # CLAUDE.md
 
-Claude Code 每次對話都會載入這份檔案。內容只放「違反了就會出錯」的規則。
-背景說明與需求細節放在 `openspec/` 與 `docs/`，需要時再讀。
+本文件定義 AI 協作者在本 Repo 中的基本工作規則。產品方向以 **CheckMate** 的產品文件為準
+（`docs/product/`、`docs/design/`、`specs/`），本 Repo 提供其後端、資料庫與前端實作。
+
+> **重構進行中（`refactor` 分支）**：現有程式碼（schema v3、處置矩陣、主管稽核等）
+> 是舊版 M1 Review Copilot 的實作，正依 CheckMate PRD 分階段重建。
+> 進度與各階段範圍見 `docs/PROJECT_STATUS.md`。舊程式碼是待替換的實作，**不是需求來源**。
 
 ---
 
-## 專案
+## 1. 工作前先讀
 
-expense-review-agent — 疊加在既有費用系統之上的 AI 費用單據初審 Agent。
-Agent 提出建議，人做決定。目前只做 **M1 Review Copilot**。
+依任務需要閱讀以下文件：
 
-- **M1-U1** 財務初審人員依 Agent 結果完成初審
-- **M1-U2** 財務主管可追溯 Agent 與人工判斷
+1. `README.md`：專案入口與整體脈絡
+2. `docs/product/original-challenge.md`：原始命題與限制
+3. `docs/product/product-discovery.md`：問題理解、證據與待驗證假設
+4. `docs/product/product-brief.md`：產品方向與核心原則
+5. `docs/product/product-scope.md`：目前版本範圍
+6. `docs/product/user-flow.md`、`docs/product/edge-cases.md`：全局流程骨架與已知情境
+7. `docs/design/`：視覺與互動規範
+8. `specs/`：已收斂功能的行為規格
+9. `docs/PROJECT_STATUS.md`：重構進度
 
-M2（風險情報）、M3（自動處置）**不在本階段範圍**。看到任何 M2/M3 的東西，
-不要順手實作，寫進 `openspec/backlog.md`。
+不要只依既有程式碼推測產品需求。`docs/archive/` 是舊版文件，僅供參考歷史脈絡。
 
-## 技術棧
+## 2. 文件優先順序
 
-pnpm monorepo：`apps/web`（React + TS + Vite + TanStack Query）、
-`apps/api`（NestJS + Prisma）、`packages/shared`（Zod schema 與型別，前後端共用）。
-PostgreSQL、S3/MinIO。
+發生衝突時：
 
-**M1 不使用 Redis / BullMQ / pgvector。** 這些是 M2/M3 的東西，不要引入。
-Review run 在 M1 是同步執行的純運算，但 **API 必須設計成非同步**：
-`POST /cases/:id/runs` 回 `202 + runId`，前端輪詢 run 狀態。
-之後接 OCR 只換 runner 實作，不改 API 契約。
+- 原始命題決定不可違反的外部限制。
+- Product Brief 決定產品方向。
+- Product Scope 決定目前版本要做與不做什麼。
+- `specs/` 決定已收斂功能的具體行為。
+- Design System 與 Interaction Patterns 決定介面與互動一致性。
+- 本文件的工程規則決定實作方式，但不得推翻上述產品決策。
+- 既有程式碼是實作結果，不是需求來源。
 
----
+若文件彼此衝突，不要自行選擇答案；先指出衝突與影響。
 
-## 絕對不可違反的領域規則
+## 3. 產品不可偏離的原則
 
-這幾條是產品的責任邊界，不是風格偏好。違反等於產品失效。
+- CheckMate 是 AI Expense Review & Control Agent，不是完整費用管理系統。
+- 審查建議固定為：建議通過、建議補件、建議人工審核。
+- Recommendation 與 Workflow Action 必須分開。
+- Agent 只能在必要檢查完成、證據充分、規則明確、無阻擋風險、無未解決衝突且位於企業授權範圍內時自動執行。
+- 資料不足、不確定、高風險或超出授權範圍時，必須轉補件或人工處理。
+- 不執行最終核准、正式會計入帳、自動付款、正式稅務申報或最終法律判定。
+- Demo 僅使用模擬資料。
 
-1. **Agent 不下最終決定。** 不執行入帳、付款、稅務申報、發票合法性認定、舞弊定罪。
-2. **每個非通過結論都必須有證據。** `RuleResult` / `MatchResult` 沒有對應的
-   `Evidence` 就是 bug。DB 有 CHECK 約束擋，不要繞過。
-3. **不指控。** `RuleDefinition.isSuspicionOnly = true` 的規則（R7 重複、R8 拆單）
-   只能表述為「疑似」。這是產品層 guardrail，組織設定不可覆寫。
-4. **資料不足不硬判 NORMAL。** 關鍵欄位低信心、來源衝突、非 TWD 幣別
-   → MISSING 或 HUMAN，不得判通過。
-5. **原始結果永不消失。** `AuditEvent` / `Disposition` / `SupervisorReview`
-   是 append-only，DB trigger 會擋 UPDATE 與 DELETE。
-   任何「修正歷史紀錄」的需求都是新增一筆事件，不是改舊的。
-6. **判定必須可回放。** 每個 run 記錄當時的 `policyVersionId`、`engineVersion`
-   與 `inputSnapshot`。不得用新版 Policy 回溯評斷舊案件。
+## 4. 工程上不可違反的規則
 
-## 已定案的決策（不要重新發明）
+以下是把上述產品原則落實到資料與程式層的保證，違反等於產品失效。
 
-以下都經過討論定案，實作時直接照做。要改必須先開 OpenSpec proposal。
+1. **每個非通過的發現項目都必須有佐證。** 阻擋型或需處理的 Finding 沒有對應佐證資料
+   （Evidence）就是 bug。DB 層以 CHECK 約束保證，不要繞過。
+2. **不指控。** 重複申報、拆單、真偽等風險訊號只能表述為「疑似」，不做舞弊或偽造的定論。
+3. **資料不足不得建議通過。** 關鍵欄位缺漏、來源衝突、超出目前能判斷的範圍
+   （例如非 TWD 幣別）→ 建議補件或建議人工審核，不得建議通過，更不得自動 PROCEED。
+4. **自動執行必須可被驗證。** Agent 執行任何 Workflow Action 前，必須留下
+   自動執行條件逐項的評估結果；條件未全數滿足時，不得由 Agent 執行。
+5. **原始結果永不消失。** 稽核紀錄、流程動作紀錄只能新增，DB trigger 會擋 UPDATE 與 DELETE。
+   重新評估產生新的審查紀錄，不覆蓋舊紀錄；任何「修正歷史」的需求都是新增一筆事件。
+6. **判定必須可回放。** 每次審查記錄當時的規範版本、引擎版本與輸入快照，
+   不得用新版規範回溯評斷舊案件。
 
-**分類與處置**
+## 5. 技術棧與架構
 
-- 四分類 `NORMAL / EXCEPTION / MISSING / HUMAN` → 三桶建議
-  `APPROVE / REQUEST_INFO / MANUAL_REVIEW`。EXCEPTION 與 HUMAN 都對應 MANUAL_REVIEW。
-- 合法動作矩陣定義在 `packages/shared/src/domain/disposition.ts`，
-  前後端都必須引用同一份，不得各自實作。
-- `ACCEPT` 在不同建議下語意不同：APPROVE → 通過；REQUEST_INFO → 補件；
-  MANUAL_REVIEW → **轉呈主管，reviewer 不下結論**。
-- 一致性徽章 `ConsistencyFlag` 由 `finalAction` 與 `agentActionAtDecision`
-  計算後**固化寫入**，不得在 UI 端即時重算（Policy 改版會讓歷史徽章翻臉）。
+pnpm monorepo：
 
-**案件狀態**
+- `apps/web`：React + TypeScript + Vite + TanStack Query
+- `apps/api`：NestJS + Prisma（PostgreSQL）
+- `packages/shared`：Zod schema、型別與領域邏輯，前後端共用同一份
 
-- `DRAFT → QUEUED → (AWAITING_INFO) → DISPOSED → REVIEW_CLOSED`
-- **沒有「已不通過」終態。** 最終核准與否屬既有系統職責。
-- 主管退回一律回 `QUEUED`。
+架構約定：
 
-**規則引擎**
+- **領域邏輯只寫一份，放在 `packages/shared`。** 審查引擎、審查建議推導、
+  自動執行條件評估、顯示用的文案對照，前後端都引用同一份，不得各自實作。
+- **審查 API 設計成非同步**：`POST /cases/:id/runs` 回 `202 + runId`，前端輪詢 run 狀態。
+  之後替換引擎或接 OCR 只換 runner 實作，不改 API 契約。
+- **不引入 Redis / BullMQ / pgvector / OCR / LLM 相依套件。** Product Scope 明列
+  Production 等級的 Pipeline、Observability、Retry、Auth/RBAC 不在範圍。
+- 擷取資料以 seed 的結構化資料為準，不做真實 OCR。
 
-- 規則分兩層：`RuleDefinition`（系統型錄，走 i18n，產品擁有）與
-  `PolicyRule`（組織設定，存條文原文，客戶擁有、後台可編輯）。
-  新增檢查類型 = 加 definition；調整額度門檻 = 改 policy rule 的 params。
-- 依賴一致性的規則採**雙假設評估**：比對不一致時，以申報值與單據值各跑一次。
-  兩者結論相同 → 照常輸出 PASS/FAIL（`BOTH_AGREE`）；
-  分歧 → `GATED` 並附 `gateReasonKey`。**絕不可因比對失敗就靜默跳過規則**，
-  那是漏判，是這個產品最不能犯的錯。
-- 規則結果五種：`PASS / FAIL / GATED / ABSTAIN / PENDING_HUMAN`。
-
-**擷取（分階段）**
-
-- Phase 1：不做 OCR。以 seed 的結構化 JSON 或介面表單為判斷依據
-  （`ExtractionSource.STRUCTURED_FIXTURE` / `MANUAL_FORM`）。
-- Phase 2 才接 OCR。**不要提前引入 OCR 相依套件。**
-
-**i18n 邊界**
-
-- 系統訊息、狀態、規則判定理由 → `messageKey` + `messageParams`，**DB 不存中文**。
-- 組織自訂的 Policy 條文（如「§4.2 住宿每晚上限 NT$4,000」）→ **存原文**，不 key 化。
-- 人工填寫的覆寫／稽核理由 → 自由文字，原樣保存。
-
----
-
-## 資料庫
+## 6. 資料庫
 
 `apps/api/prisma/schema.prisma` 是唯一真相來源。
 
 - **禁止 `prisma db push`。** 一律 `prisma migrate dev`。
 - **禁止修改已經 commit 的 migration 檔案。** 要改就新增一個 migration。
-- DB 層的 trigger、CHECK、EXCLUDE 約束寫在 migration 的 SQL 裡
-  （schema.prisma 檔末有完整清單）。這些是治理保證，不是可選項。
-- schema 與 migrations 有指定 owner，見 `CODEOWNERS`。
-  需要改 schema 時**先問，不要自己動**。
+  唯一例外是重構階段三的「schema v4 基準重設」，由 schema owner 執行並於 PR 中說明。
+- DB 層的 trigger、CHECK、EXCLUDE 約束寫在 migration 的 SQL 裡。這些是治理保證，不是可選項。
+- schema 與 migrations 有指定 owner，見 `.github/CODEOWNERS`。需要改 schema 時**先問，不要自己動**。
+- 重置資料一律用 `db:reset`，不要 `TRUNCATE` 或逐表 `DELETE`。
 
-## 指令
+## 7. 開發方式
+
+### Skill Discipline
+
+開始任何新產品行為（新 User Story／Product Slice）或除錯任務前，
+先確認 Superpowers 流程 skill（如 brainstorming、systematic-debugging）是否適用，
+不得因為需求或問題描述已經很清楚而跳過檢查。
+
+產品功能以可獨立驗收的 **User Story / Product Slice** 作為主要開發單位。
+
+已收斂的非瑣碎產品行為，依以下流程進行：
+
+```text
+Product Direction
+→ User Story / Product Slice
+→ Spec + Acceptance Criteria
+→ Test Strategy
+→ Implementation
+→ Verification
+```
+
+### Spec-Driven Development
+
+- 尚未收斂的 UI、Interaction、資訊架構或文案，可以先用介面與 Mock Data 快速驗證，不強制先建立正式 Spec。
+- 當功能行為已收斂且需要穩定實作時，再建立或更新 `specs/`（格式見 `specs/README.md`）。
+- Spec 至少要包含 User Story / 使用情境、行為定義、Acceptance Criteria 與重要例外情境。
+- 實作不得自行加入 Spec 沒有定義的新狀態、流程或產品決策。
+- 若發現值得做但不屬於目前 Scope 的功能，不順手實作。
+
+### Test-Driven Development
+
+- 可自動驗證的核心領域邏輯與 Bug Fix 優先採 Test-first。
+- 能由 Acceptance Criteria 直接轉成自動測試的行為，優先先定義測試再實作。
+- 審查建議推導、自動執行條件評估、流程動作的合法性，這三處**必須有測試**。
+- 純視覺調整、探索中的 Interaction 與一次性 Demo 細節，不要求形式化 TDD。
+- 測試失敗時，不為了讓測試通過而修改正確的 Acceptance Criteria。
+- 若 Spec、Test 與實作互相衝突，先回到產品規則釐清。
+
+**目前不使用 OpenSpec。** 不要建立 `openspec/`、Change Proposal、Archive 或相關流程，
+除非後續明確決定導入。舊的 OpenSpec 紀錄封存在 `docs/archive/openspec-m1/`，僅供參考。
+
+Bug Fix、Refactor、Chore、Spike 等非產品功能變更可以獨立處理，不需要硬包成 User Story，
+但仍需有清楚範圍與驗證方式。
+
+## 8. 目前開發原則
+
+目前階段優先順序：
+
+1. 核心審查流程清楚且可操作
+2. Demo 情境完整
+3. 資訊架構與互動一致
+4. 核心產品行為可驗證
+5. 再考慮工程完整度
+
+避免為尚未確認的需求建立過度抽象、過度泛化或 production-grade 的基礎設施。
+
+## 9. UI 與 UX
+
+- 專業、可信任、冷靜、清楚。
+- Review-first、Risk-first、Evidence-first。
+- 先呈現結論與需要使用者處理的事項，再逐步展開細節。
+- 不使用 Emoji 作為 UI icon。
+- 使用一致的 icon system（Lucide React）。
+- UX Writing 採台灣常用、直接、可操作的用語。
+- 不使用模糊或擬人化的 AI 文案掩蓋系統實際行為。
+- 不自行發明新的 Status、Recommendation、Action wording 或 Icon 語意。
+- 不只靠顏色傳達重要狀態。
+
+## 10. 規格與實作邊界
+
+- 不因「未來可能會用」提前加入未進 Scope 的功能、套件或基礎設施。
+- 不為了配合既有 Code 而改寫已定案的產品規則。
+- 不把 Mock Data 或 Demo 邏輯包裝成已完成的 Production 能力。
+- 發現需求超出 Product Scope、需要新增產品流程或自動化權限時，先提出再實作。
+
+## 11. PRD Review Criteria
+
+撰寫或修改 User Story、User Flow、Edge Case、PRD、Feature Spec、Acceptance Criteria 時，
+須依 `docs/product/prd-review-criteria.md` 檢查，依文件所處階段套用不同嚴謹度：
+
+- **探索／全局骨架階段**（例如 User Flow、Edge Case Map 等尚未收斂的文件）：Criteria 用來幫助思考與避免遺漏，
+  不要求每個不適用項目都形式化標示 N/A。但不能因此掩蓋真正未決的產品問題。
+- **Feature Spec／Acceptance Criteria 階段**：需逐項套用 Criteria；不適用項目應標示 N/A 並簡要說明原因，不可直接忽略。
+- 檢查須在撰寫階段主動進行，不是只在文件完成後才回頭 Review。
+- 內容應放在正確的文件層級（例如 User Flow 不需要涵蓋效能門檻）。
+
+## 12. 反模式
+
+看到以下情況，停下來問，不要自己決定：
+
+- 想在 `apps/web` 或 `apps/api` 重新實作一份判定邏輯（應該用 `packages/shared`）
+- 想加新的 npm 套件
+- 想改 `schema.prisma` 或 migration
+- 想繞過 DB 約束（改成應用層驗證、或加 `-- @skip` 之類）
+- 想為了相容舊程式碼而保留 CheckMate 文件沒有的狀態、動作或用語
+- 想「順便」重構不在本次任務範圍的檔案
+- 測試跑不過，於是改測試而不是改實作
+
+## 13. 寫程式的風格
+
+- 領域邏輯放 `packages/shared`，用 Zod 定義並匯出型別。
+- 金額一律 `Prisma.Decimal`（前端與 shared 以字串傳遞），**不要用 JS number 做金額運算**。
+  浮點誤差會讓比對結果不穩定，這在對帳產品是致命的。邊界轉換寫在 DTO 層。
+- enum 值用英文，顯示文案集中在 shared 的文案對照表。
+
+## 14. 指令
 
 ```bash
 pnpm dev:api                      # 後端 dev server
 pnpm dev:web                      # 前端 dev server
 pnpm --filter api prisma:migrate  # 套用 migration
-pnpm --filter api db:reset         # 重建 10 筆 demo 案件（會清空資料）
-pnpm lint && pnpm typecheck && pnpm test && pnpm build   # 開 PR 前必跑
+pnpm --filter api db:reset        # 重建 demo 案件（會清空資料）
+pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build   # 開 PR 前必跑
 ```
 
-## 工作流程
-
-本 repo 走 spec-driven development，用 OpenSpec （skills 見 `.claude/skills/openspec-*`）。
-
-- 想清楚要做什麼 → `openspec-explore`（只思考，不寫程式）
-- 決定要做 → `openspec-propose` 產出 proposal / specs / design / tasks
-- 開始實作 → `openspec-apply-change`
-- 實作完成 → 交給 schema owner 執行 `openspec-sync-specs` 與 `openspec-archive-change`
-
-任何非瑣碎的改動**先在 `openspec/changes/` 開 proposal，再寫程式**。
-完整規範見 `AGENTS.md`。
-
-瑣碎改動（錯字、樣式微調、補測試）可直接做。
-判斷標準：**會不會影響領域行為？** 會 → 先寫 proposal。
-
-## 反模式
-
-看到以下情況，停下來問，不要自己決定：
-
-- 想在 `apps/web` 重新實作一份判定邏輯（應該用 `packages/shared`）
-- 想加新的 npm 套件（先問，M1 相依套件已經夠了）
-- 想改 `schema.prisma` 或 migration
-- 想繞過 DB 約束（改成應用層驗證、或加 `-- @skip` 之類）
-- 想把中文字串寫進 DB 的 `messageKey` 欄位
-- 想「順便」重構不在本次任務範圍的檔案
-- 測試跑不過，於是改測試而不是改實作
-
-## 寫程式的風格
-
-- 領域邏輯放 `packages/shared`，用 Zod 定義並匯出型別，不要在兩邊各寫一份。
-- 金額一律 `Prisma.Decimal`，**不要用 JS number 做金額運算**（浮點誤差會讓
-  比對結果不穩定，這在對帳產品是致命的）。邊界轉換寫在 DTO 層。
-- enum 值用英文，顯示文案走 i18n map。
-- 新增領域行為時同時補測試。矩陣、徽章計算、雙假設評估這三處**必須有測試**。
+改了 `packages/shared` 一定要 `pnpm --filter shared build`，否則 api（吃 dist）拿到舊版。

@@ -1,5 +1,9 @@
 # 後端 API 規格（M1 DEMO 導向）
 
+> **舊版規格（schema v3）**：本文件描述重構前的 API，仍對應目前 `apps/api` 的實作。
+> 處置（disposition）、主管稽核（supervisor-review）等端點將在重構階段四依 CheckMate PRD
+> 改為流程動作（PROCEED／REQUEST_INFO／ESCALATE）模型，屆時改寫本文件。見 `docs/PROJECT_STATUS.md`。
+
 > 依 `PRD v0.1`（Reviewer 工作台）與 `Product Vision & Strategy` 設計，對齊 schema v3。
 > **DEMO 導向**：判定可用簡化/寫死邏輯，只要能吐出 seed 案件的結果讓前端演一條龍即可。
 > 作者：@ChichiTung（後端）｜日期：2026-09-08

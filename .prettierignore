@@ -4,3 +4,8 @@ node_modules
 coverage
 generated
 pnpm-lock.yaml
+
+# 由 CheckMate Repo 同步，保持逐字一致以便比對
+docs/product
+docs/design
+specs

@@ -3,8 +3,6 @@
 > 目的：讓 repo 的權限控制**真正生效**。`CODEOWNERS`、`CLAUDE.md`、CI 只是
 > 「寫在檔案裡的規則」，沒有下列 GitHub 設定就沒有強制力。
 > 這些設定**只有 repo owner / admin 能做**，AI agent 無法代為操作。
->
-> 對應 OpenSpec change：`bootstrap-m1-foundation`（tasks §5.2）。
 
 ## 為什麼需要這份清單
 
