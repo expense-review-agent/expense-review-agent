@@ -1,57 +1,49 @@
-// Parity test: shared Zod enums MUST match the Prisma schema enums one-to-one.
-// Uses Node's built-in test runner (node:test) — no extra dependency.
-//
-// Run: node --test (via `pnpm --filter shared test`)
-//
-// The Prisma enum values are mirrored here as the "expected" source, read from
-// apps/api/prisma/schema.prisma at test time so drift on either side fails.
+// shared 的詞彙必須與 Prisma schema 的 enum 一一對應，否則前後端與 DB 會各說各話。
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
 
 import {
-  classificationSchema,
-  recommendedActionSchema,
-  reviewerActionSchema,
-  supervisorActionSchema,
-  ruleOutcomeSchema,
-  caseStatusSchema,
-  consistencyFlagSchema,
-  confidenceLevelSchema,
-} from "../enums.ts";
+  ACTOR_TYPES,
+  AUDIT_EVENT_TYPES,
+  CASE_STATUSES,
+  CHECK_STATUSES,
+  FINDING_KINDS,
+  RECOMMENDATIONS,
+  REVIEW_DIMENSIONS,
+  REVIEW_SOURCES,
+  WORKFLOW_ACTIONS,
+} from "../domain/vocabulary.ts";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaPath = resolve(here, "../../../../apps/api/prisma/schema.prisma");
-const schemaSrc = readFileSync(schemaPath, "utf-8");
+const schema = readFileSync(
+  new URL("../../../../apps/api/prisma/schema.prisma", import.meta.url),
+  "utf8",
+);
 
-/** Parse `enum Name { A B // comment\n C }` from the Prisma schema. */
 function prismaEnum(name: string): string[] {
-  const m = schemaSrc.match(new RegExp(`enum\\s+${name}\\s*\\{([^}]*)\\}`));
-  if (!m) throw new Error(`Prisma enum ${name} not found in schema.prisma`);
-  return m[1]
+  const match = new RegExp(`enum ${name} \\{([^}]*)\\}`).exec(schema);
+  assert.ok(match, `schema.prisma 找不到 enum ${name}`);
+  return match[1]!
     .split("\n")
-    .map((l) => l.split("//")[0].trim())
+    .map((line) => line.replace(/\/\/.*$/, "").trim())
     .filter(Boolean);
 }
 
-const cases: Array<[string, readonly string[], string]> = [
-  ["Classification", classificationSchema.options, "Classification"],
-  ["RecommendedAction", recommendedActionSchema.options, "RecommendedAction"],
-  ["ReviewerAction", reviewerActionSchema.options, "ReviewerAction"],
-  ["SupervisorAction", supervisorActionSchema.options, "SupervisorAction"],
-  ["RuleOutcome", ruleOutcomeSchema.options, "RuleOutcome"],
-  ["CaseStatus", caseStatusSchema.options, "CaseStatus"],
-  ["ConsistencyFlag", consistencyFlagSchema.options, "ConsistencyFlag"],
-  ["ConfidenceLevel", confidenceLevelSchema.options, "ConfidenceLevel"],
+const pairs: Array<[string, readonly string[]]> = [
+  ["CaseStatus", CASE_STATUSES],
+  ["Recommendation", RECOMMENDATIONS],
+  ["ReviewDimension", REVIEW_DIMENSIONS],
+  ["CheckStatus", CHECK_STATUSES],
+  ["FindingKind", FINDING_KINDS],
+  ["WorkflowAction", WORKFLOW_ACTIONS],
+  ["ActorType", ACTOR_TYPES],
+  ["ReviewSource", REVIEW_SOURCES],
+  ["AuditEventType", AUDIT_EVENT_TYPES],
 ];
 
-for (const [label, sharedValues, prismaName] of cases) {
-  test(`${label} matches Prisma enum one-to-one`, () => {
-    const expected = [...prismaEnum(prismaName)].sort();
-    const actual = [...sharedValues].sort();
-    assert.deepEqual(actual, expected, `Shared enum ${label} diverged from Prisma ${prismaName}`);
+for (const [name, values] of pairs) {
+  test(`enum ${name} 與 shared 詞彙一致`, () => {
+    assert.deepEqual(prismaEnum(name), [...values]);
   });
 }

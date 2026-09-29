@@ -1,266 +1,196 @@
 // =============================================================================
-// API 契約型別（前後端共用）
-// 對應 docs/API_SPEC.md 的 11 支端點。前端與後端都 import 這一份，契約不漂移。
-// 骨架保英文（型別名），註解與說明用中文。
+// API 契約（前後端共用）。對應 docs/API_SPEC.md。
+// 前端以這些 schema 驗證回應；後端的回傳型別也取自這裡，契約不漂移。
 // =============================================================================
 
 import { z } from "zod";
 import {
-  classificationSchema,
-  recommendedActionSchema,
-  reviewerActionSchema,
-  supervisorActionSchema,
-  ruleOutcomeSchema,
-  caseStatusSchema,
-  consistencyFlagSchema,
-  confidenceLevelSchema,
-} from "./enums";
+  ACTOR_TYPES,
+  CASE_STATUSES,
+  CHECK_STATUSES,
+  FINDING_KINDS,
+  RECOMMENDATIONS,
+  REVIEW_DIMENSIONS,
+  REVIEW_SOURCES,
+  WORKFLOW_ACTIONS,
+} from "./domain/vocabulary.ts";
 
-// ---- 共用小型別 ----
-/// 金額一律以字串傳遞，避免 JS number 的浮點誤差（後端由 Prisma Decimal 轉字串）。
+export const recommendationSchema = z.enum(RECOMMENDATIONS);
+export const reviewDimensionSchema = z.enum(REVIEW_DIMENSIONS);
+export const checkStatusSchema = z.enum(CHECK_STATUSES);
+export const findingKindSchema = z.enum(FINDING_KINDS);
+export const workflowActionSchema = z.enum(WORKFLOW_ACTIONS);
+export const caseStatusSchema = z.enum(CASE_STATUSES);
+export const actorTypeSchema = z.enum(ACTOR_TYPES);
+export const reviewSourceSchema = z.enum(REVIEW_SOURCES);
+
+/** 金額一律以字串傳遞（後端由 Prisma Decimal 轉字串），避免浮點誤差。 */
 export const moneySchema = z.string();
+/** YYYY-MM-DD */
+export const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
-// =============================================================================
-// #2 GET /api/cases/summary — 四狀態統計卡片
-// =============================================================================
-export const caseSummarySchema = z.object({
-  total: z.number(),
-  // key 可能是分類(NORMAL/EXCEPTION/...)或案件狀態(REVIEW_CLOSED 等)，用寬鬆 string key。
-  byStatus: z.record(z.string(), z.number()),
-});
-export type CaseSummary = z.infer<typeof caseSummarySchema>;
+// ---- 審查紀錄 ---------------------------------------------------------------
 
-// =============================================================================
-// #3 GET /api/cases — 案件列表項
-// =============================================================================
-export const caseListItemSchema = z.object({
-  id: z.string(),
-  caseNumber: z.string(),
-  applicantName: z.string(),
-  /// 申請當時的部門（時點快照）。來源系統未提供時為 null，語意是「未記錄」。
-  department: z.string().nullable(),
+export const checkResultSchema = z.object({
+  dimension: reviewDimensionSchema,
+  status: checkStatusSchema,
   summary: z.string(),
-  category: z.string().nullable(),
-  amount: moneySchema.nullable(),
+});
+export type CheckResult = z.infer<typeof checkResultSchema>;
+
+export const findingSchema = z.object({
+  key: z.string(),
+  dimension: reviewDimensionSchema,
+  kind: findingKindSchema,
+  title: z.string(),
+  explanation: z.string(),
+  ruleCode: z.string().nullable(),
+  ruleText: z.string(),
+  comparison: z.array(z.tuple([z.string(), z.string()])),
+  relatedCaseNumber: z.string().nullable(),
+  nextStep: z.string().nullable(),
+});
+export type Finding = z.infer<typeof findingSchema>;
+
+export const reviewRecordSchema = z.object({
+  key: z.string(),
+  reviewedAt: z.string(), // ISO datetime
+  recommendation: recommendationSchema,
+  /** PRESET = 預置的模擬分析結果，不是引擎實際算出的。 */
+  source: reviewSourceSchema,
+  checks: z.array(checkResultSchema),
+  findings: z.array(findingSchema),
+  /** 當次審查時已提供的憑證。歷史紀錄不能顯示後來補入的附件。 */
+  receiptKeys: z.array(z.string()),
+});
+export type ReviewRecord = z.infer<typeof reviewRecordSchema>;
+
+export const reviewDiffSchema = z.object({
+  previousRecommendation: recommendationSchema,
+  currentRecommendation: recommendationSchema,
+  recommendationChanged: z.boolean(),
+  added: z.array(z.object({ key: z.string(), title: z.string() })),
+  resolved: z.array(z.object({ key: z.string(), title: z.string() })),
+});
+
+// ---- 案件 -------------------------------------------------------------------
+
+export const receiptSchema = z.object({
+  key: z.string(),
+  vendor: z.string(),
+  amount: moneySchema,
+  issueDate: isoDateSchema,
+  hasTaxId: z.boolean(),
+  /** 展示用模擬憑證圖檔（前端 public 下的路徑），不是真實文件。 */
+  imagePath: z.string().nullable(),
+});
+export type Receipt = z.infer<typeof receiptSchema>;
+
+export const expenseLineSchema = z.object({
+  key: z.string(),
+  category: z.string(),
+  description: z.string(),
+  expenseDate: isoDateSchema,
+  amount: moneySchema,
+  /** 未提供時為 null，不由總額反推，也不顯示為零。 */
+  netAmount: moneySchema.nullable(),
+  taxAmount: moneySchema.nullable(),
+  receiptKeys: z.array(z.string()),
+});
+export type ExpenseLine = z.infer<typeof expenseLineSchema>;
+
+export const workflowActionRecordSchema = z.object({
+  action: workflowActionSchema,
+  actorType: actorTypeSchema,
+  actorLabel: z.string(),
+  reason: z.string(),
+  originalRecommendation: recommendationSchema,
+  reviewKey: z.string(),
+  resultingStatus: caseStatusSchema,
+  createdAt: z.string(), // ISO datetime
+});
+export type WorkflowActionRecord = z.infer<typeof workflowActionRecordSchema>;
+
+// GET /api/cases
+export const caseListItemSchema = z.object({
+  caseNumber: z.string(),
+  summary: z.string(),
+  applicantName: z.string(),
+  department: z.string(),
+  category: z.string(),
+  amount: moneySchema,
   currency: z.string(),
-  expenseDate: z.string().nullable(), // ISO date (YYYY-MM-DD)
-  /// 申請日期：列表的日期欄與排序依據（消費日期仍保留，於詳情抽屜顯示）。
-  applicationDate: z.string().nullable(), // ISO date (YYYY-MM-DD)
-  status: classificationSchema.or(caseStatusSchema),
-  /// 案件流程狀態（QUEUED / AWAITING_INFO / DISPOSED ...），與上方 Agent 分類分開。
-  /// 前端依此決定是否顯示處置按鈕。
-  caseStatus: caseStatusSchema,
-  recommendedAction: recommendedActionSchema.nullable(),
+  submittedAt: isoDateSchema.nullable(),
+  recommendation: recommendationSchema,
+  /** 初審結果欄的一句話摘要（取自最新審查紀錄的 Finding）。 */
+  agentSummary: z.string(),
+  status: caseStatusSchema,
 });
 export type CaseListItem = z.infer<typeof caseListItemSchema>;
 
-export const caseListResponseSchema = z.object({
-  items: z.array(caseListItemSchema),
-});
+export const caseListResponseSchema = z.object({ items: z.array(caseListItemSchema) });
 export type CaseListResponse = z.infer<typeof caseListResponseSchema>;
 
-// =============================================================================
-// #4 GET /api/cases/:id — 單案完整詳情
-// =============================================================================
-export const caseCheckSchema = z.object({
-  checkKey: z.string(),
-  ruleCode: z.string(),
-  outcome: ruleOutcomeSchema,
-  isSuspicionOnly: z.boolean(),
-  severity: z.string(),
-  messageKey: z.string(),
-  messageParams: z.record(z.string(), z.unknown()).default({}),
-  policyRef: z.string().nullable(),
-  policyText: z.string().nullable(),
-  evidence: z.array(
-    z.object({
-      snippet: z.string().nullable(),
-      relatedCaseId: z.string().nullable(),
-      relatedCaseNumber: z.string().nullable(),
-    }),
-  ),
-});
-export type CaseCheck = z.infer<typeof caseCheckSchema>;
-
+// GET /api/cases/:caseNumber
 export const caseDetailSchema = z.object({
-  id: z.string(),
   caseNumber: z.string(),
+  applicantName: z.string(),
+  employeeId: z.string().nullable(),
+  department: z.string(),
+  category: z.string(),
+  amount: moneySchema,
+  currency: z.string(),
+  expenseDate: isoDateSchema,
+  submittedAt: isoDateSchema.nullable(),
   summary: z.string(),
-  status: classificationSchema.or(caseStatusSchema),
-  /// 案件流程狀態，與 Agent 分類分開（見 caseListItemSchema）。
-  caseStatus: caseStatusSchema,
-  applicant: z.object({
-    name: z.string(),
-    department: z.string().nullable(),
-    amount: moneySchema.nullable(),
-    category: z.string().nullable(),
-    expenseDate: z.string().nullable(),
-    applicationDate: z.string().nullable(),
-  }),
-  run: z
-    .object({
-      runId: z.string(),
-      classification: classificationSchema.nullable(),
-      recommendedAction: recommendedActionSchema.nullable(),
-      confidenceLevel: confidenceLevelSchema.nullable(),
-      policyVersion: z.string().nullable(),
-      engineVersion: z.string(),
-    })
-    .nullable(),
-  checks: z.array(caseCheckSchema),
-  suggestion: z
-    .object({
-      recommendedAction: recommendedActionSchema,
-      reasonKey: z.string(),
-      reasonParams: z.record(z.string(), z.unknown()).default({}),
-    })
-    .nullable(),
-  /// 最新一筆 Reviewer 處置（append-only 紀錄的唯讀投影）。尚未被處置時為 null。
-  /// `consistencyFlag` 是處置寫入時固化的值，前端與後端都不得在讀取時重算。
-  disposition: z
-    .object({
-      actorName: z.string(),
-      decidedAt: z.string(), // ISO datetime
-      action: reviewerActionSchema,
-      consistencyFlag: consistencyFlagSchema,
-    })
-    .nullable(),
+  description: z.string(),
+  paymentMethod: z.string().nullable(),
+  /** 展示情境名稱（模擬資料用），例如「疑似重複申報」。 */
+  scenario: z.string(),
+  status: caseStatusSchema,
+  lines: z.array(expenseLineSchema),
+  receipts: z.array(receiptSchema),
+  /** 由舊到新；最後一筆是最新審查紀錄。 */
+  reviews: z.array(reviewRecordSchema).min(1),
+  /** 最新審查紀錄的人工處理紀錄；尚未處理時為 null。 */
+  latestAction: workflowActionRecordSchema.nullable(),
+  /** 最新與前一次審查的差異；只有一筆審查紀錄時為 null。 */
+  reviewDiff: reviewDiffSchema.nullable(),
 });
 export type CaseDetail = z.infer<typeof caseDetailSchema>;
 
-// =============================================================================
-// #5 GET /api/cases/:id/related — 關聯案件
-// =============================================================================
-export const relatedCasesResponseSchema = z.object({
-  related: z.array(
-    z.object({
-      id: z.string(),
-      caseNumber: z.string(),
-      amount: moneySchema.nullable(),
-      status: caseStatusSchema.or(classificationSchema),
-    }),
-  ),
+// POST /api/cases/:caseNumber/actions
+export const workflowActionRequestSchema = z.object({
+  reviewKey: z.string(),
+  action: workflowActionSchema,
+  reason: z.string().default(""),
 });
-export type RelatedCasesResponse = z.infer<typeof relatedCasesResponseSchema>;
+export type WorkflowActionRequest = z.input<typeof workflowActionRequestSchema>;
 
-// =============================================================================
-// GET /api/cases/:id/history?scope=applicant|department — 申請人／部門申請紀錄
-//
-// 以案件為查詢起點（申請人沒有穩定 id，姓名放進 URL 會遇到編碼與同名歧義）。
-// 唯讀投影：只有既有案件欄位，沒有風險分數、頻率統計或任何結論性標記——
-// 跨案件風險判定屬 M2，不在此回應內。
-// =============================================================================
-export const caseHistoryScopeSchema = z.enum(["applicant", "department"]);
-export type CaseHistoryScope = z.infer<typeof caseHistoryScopeSchema>;
-
-export const caseHistoryItemSchema = z.object({
-  id: z.string(),
+export const workflowActionResponseSchema = z.object({
   caseNumber: z.string(),
-  applicationDate: z.string().nullable(), // ISO date (YYYY-MM-DD)
-  amount: moneySchema.nullable(),
-  currency: z.string(),
-  status: classificationSchema.or(caseStatusSchema),
-  caseStatus: caseStatusSchema,
-  /// 是否為查詢起點的那筆案件（清單一律包含起點案件並標示）。
-  isCurrent: z.boolean(),
+  status: caseStatusSchema,
+  action: workflowActionRecordSchema,
 });
-export type CaseHistoryItem = z.infer<typeof caseHistoryItemSchema>;
+export type WorkflowActionResponse = z.infer<typeof workflowActionResponseSchema>;
 
-export const caseHistoryResponseSchema = z.object({
-  scope: caseHistoryScopeSchema,
-  /// 查詢所依據的值（申請人姓名或部門名稱），供前端顯示標題。
-  subject: z.string(),
-  items: z.array(caseHistoryItemSchema),
+// POST /api/cases/batch-complete
+export const batchCompleteRequestSchema = z.object({
+  caseNumbers: z.array(z.string()),
 });
-export type CaseHistoryResponse = z.infer<typeof caseHistoryResponseSchema>;
+export type BatchCompleteRequest = z.infer<typeof batchCompleteRequestSchema>;
 
-// =============================================================================
-// #7 GET /api/policies — 費用規範列表
-// =============================================================================
-export const policyItemSchema = z.object({
-  ruleKey: z.string(),
-  ruleCode: z.string(),
-  /// 規則名稱的 i18n key（例 "rule.R1.name"）。欄位名刻意帶 Key：這裡存的一直是
-  /// 識別碼而非顯示文案，叫 name 會誘導呼叫端直接印出 "rule.R1.name"。
-  nameKey: z.string(),
-  /// 規則說明的 i18n key；型錄未提供說明時為 null。
-  descKey: z.string().nullable(),
-  /// 組織條文的參照與原文。產品內建的安全邊界沒有條文可引用，兩者皆為 null——
-  /// 不以系統文案偽造成條文（見 specs/review-api「規範列表」）。
-  clauseRef: z.string().nullable(),
-  clauseText: z.string().nullable(),
-  category: z.string().nullable(),
-  params: z.record(z.string(), z.unknown()).default({}),
-  violationHandling: z.string().nullable(),
-  /// true = 本規則只能表述為「疑似」（R7 重複、R8 拆單）。取自產品擁有的 RuleDefinition，
-  /// **不得**由組織可編輯的 clauseText 字面推斷——那會讓組織改寫條文就關掉 guardrail。
-  isSuspicionOnly: z.boolean(),
-  /// true = 產品內建的安全邊界檢查，非組織條文。
-  isGuardrail: z.boolean(),
+export const batchCompleteResponseSchema = z.object({
+  results: z.array(z.object({ caseNumber: z.string(), status: caseStatusSchema })),
 });
-export type PolicyItem = z.infer<typeof policyItemSchema>;
+export type BatchCompleteResponse = z.infer<typeof batchCompleteResponseSchema>;
 
-export const policyListResponseSchema = z.object({
-  items: z.array(policyItemSchema),
-});
-export type PolicyListResponse = z.infer<typeof policyListResponseSchema>;
-
-// =============================================================================
-// #8/#9 Runs — 非同步 Agent 初審
-// =============================================================================
-export const runStatusSchema = z.enum(["PENDING", "RUNNING", "SUCCEEDED", "FAILED"]);
-export type RunStatus = z.infer<typeof runStatusSchema>;
-
-export const createRunResponseSchema = z.object({
-  runId: z.string(),
-  status: runStatusSchema,
-});
-export type CreateRunResponse = z.infer<typeof createRunResponseSchema>;
-
-export const runStateResponseSchema = z.object({
-  runId: z.string(),
-  status: runStatusSchema,
-  caseId: z.string(),
-  classification: classificationSchema.nullable(),
-});
-export type RunStateResponse = z.infer<typeof runStateResponseSchema>;
-
-// =============================================================================
-// #10 POST /api/cases/:id/disposition — Reviewer 處置
-// =============================================================================
-export const dispositionRequestSchema = z.object({
-  runId: z.string(),
-  action: reviewerActionSchema,
-  reason: z.string().optional(),
-  /// 人工最終結論。`MANUAL_JUDGEMENT` 時必填（由 UI modal 指定通過／補件／人工審核）；
-  /// 其餘動作不得帶——結論由動作本身決定，靜默忽略會讓前端誤以為自己指定的值生效了。
-  finalAction: recommendedActionSchema.optional(),
-});
-export type DispositionRequest = z.infer<typeof dispositionRequestSchema>;
-
-export const dispositionResponseSchema = z.object({
-  dispositionId: z.string(),
-  resultingStatus: caseStatusSchema,
-  consistencyFlag: consistencyFlagSchema,
-});
-export type DispositionResponse = z.infer<typeof dispositionResponseSchema>;
-
-// =============================================================================
-// #11 POST /api/cases/:id/supervisor-review — 主管稽核
-// =============================================================================
-export const supervisorReviewRequestSchema = z.object({
-  action: supervisorActionSchema,
-  comment: z.string().optional(),
-});
-export type SupervisorReviewRequest = z.infer<typeof supervisorReviewRequestSchema>;
-
-// =============================================================================
-// #6 GET /api/cases/:id/audit — 稽核軌跡
-// =============================================================================
+// GET /api/cases/:caseNumber/audit
 export const auditEventSchema = z.object({
   seq: z.number(),
   type: z.string(),
-  actorLabel: z.string().nullable(),
+  actorType: actorTypeSchema,
+  actorLabel: z.string(),
   payload: z.record(z.string(), z.unknown()),
   createdAt: z.string(),
   hash: z.string(),

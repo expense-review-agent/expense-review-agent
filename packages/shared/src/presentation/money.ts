@@ -1,22 +1,39 @@
 // =============================================================================
-// 金額顯示格式化——純字串處理，不經 JS number（避免浮點誤差，CLAUDE.md）。
-// 只負責顯示；不做任何換算或運算。
+// 金額顯示與加總（新台幣）
+//
+// API 以字串傳遞金額（後端由 Prisma Decimal 轉字串）。這裡一律以 BigInt 的「分」
+// 計算與格式化，不經 JS number，避免浮點誤差。
 // =============================================================================
 
-const DECIMAL_STRING = /^(-?)(\d+)(\.\d+)?$/;
+const AMOUNT_PATTERN = /^\d+(\.\d{1,2})?$/;
 
-/**
- * "12345.50", "TWD" → "NT$ 12,345.50"
- * "12000", "USD"    → "USD 12,000"
- * null              → "—"
- * 非預期格式原樣顯示（前綴幣別），不猜測。
- */
-export function formatMoney(amount: string | null, currency: string): string {
-  if (amount === null) return "—";
-  const prefix = currency === "TWD" ? "NT$" : currency;
-  const match = DECIMAL_STRING.exec(amount.trim());
-  if (!match) return `${prefix} ${amount}`;
-  const [, sign = "", integer = "", fraction = ""] = match;
-  const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return `${prefix} ${sign}${grouped}${fraction}`;
+function parseCents(raw: string): bigint | undefined {
+  const value = raw.trim();
+  if (!AMOUNT_PATTERN.test(value)) return undefined;
+  const [whole = "0", fraction = ""] = value.split(".");
+  return BigInt(whole) * 100n + BigInt(fraction.padEnd(2, "0"));
+}
+
+function groupThousands(digits: string): string {
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+/** "1480" → "NT$1,480"；"1480.5" → "NT$1,480.50"。無法解析時原樣回傳，不猜測。 */
+export function formatTwd(amount: string): string {
+  const cents = parseCents(amount);
+  if (cents === undefined) return amount;
+  const whole = groupThousands((cents / 100n).toString());
+  const fraction = cents % 100n;
+  return fraction === 0n ? `NT$${whole}` : `NT$${whole}.${fraction.toString().padStart(2, "0")}`;
+}
+
+/** 加總金額字串，回傳兩位小數的字串。遇到無法解析的金額直接丟錯，不略過。 */
+export function sumAmounts(amounts: readonly string[]): string {
+  let total = 0n;
+  for (const amount of amounts) {
+    const cents = parseCents(amount);
+    if (cents === undefined) throw new Error(`無法解析的金額：${amount}`);
+    total += cents;
+  }
+  return `${total / 100n}.${(total % 100n).toString().padStart(2, "0")}`;
 }
