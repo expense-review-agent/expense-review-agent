@@ -47,20 +47,28 @@ PM 已確認以 **CheckMate** 的 PRD 作為最新版本，Demo 也以此為主�
   `expense-rule`、`demo-case` skill。
 - **程式碼尚未修改**：`apps/`、`packages/` 仍是舊版模型，CI 行為不變。
 
-## 3. 待定案的產品決策（階段二開工前需要）
+## 3. 產品決策狀態（2026-09-29 依 CheckMate 最新文件更新）
 
-以下問題會直接影響資料模型，CheckMate 文件目前沒有定案或前後不一致，需要 PM 確認：
+CheckMate 在 2026-09-28 大幅更新：刪除 `user-flow.md`、`edge-cases.md`（流程與例外改寫在各 Spec），
+重寫 `specs/review-case.md`，新增 `specs/amount-check.md`，Product Scope 改為「本輪 Prototype」＋「Demo Day 目標」兩段。
+本 Repo 已重新同步。原本列出的待定事項，現況如下：
 
-1. **OVERRIDE 的定位**：`product-brief.md`／`product-scope.md` 把 OVERRIDE 列為流程動作之一；
-   `user-flow.md` 則說 OVERRIDE 不是流程動作，覆寫後仍須接續 PROCEED／REQUEST_INFO／ESCALATE。
-2. **Agent 可自動執行的動作範圍**：只有 PROCEED，還是 REQUEST_INFO、ESCALATE 也可以？
-   README 說 Agent 可通知補件、轉交人工；`user-flow.md` 只描述自動 PROCEED。
-3. **「建議通過但不能自動執行」的案件狀態**：`edge-cases.md` 列為待確認。
-4. **舊版的兩種邊界處理是否沿用**：
-   - 比對不一致時以申報值與單據值各評估一次、結論分歧就視為「未解決衝突」；
-   - 非 TWD、關鍵欄位低信心時主動退讓轉人工。
-     兩者都符合 CheckMate 原則，但會改變 `specs/review-case.md` 的現有行為，需先確認。
-5. **規範數值**：住宿上限在 CheckMate 引擎是 5,000，舊版 seed 是每晚 4,000。
+| 事項                           | 現況                                                                                                          | 來源                                    |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| OVERRIDE 的定位                | ✅ 已定案：人工決策覆寫，覆寫後仍需接續流程動作；保留原始建議、原因、執行者與時間                             | `product-brief.md`                      |
+| Agent 與人工的動作             | ✅ 已定案：共用 PROCEED／REQUEST_INFO／ESCALATE，執行者記錄在稽核紀錄                                         | `product-brief.md`                      |
+| Agent 自動執行                 | ⚠️ **本輪不做**；屬 Demo Day「受控處置」目標，授權條件留待對應 Slice                                          | `product-scope.md`                      |
+| 建議通過但無權自動執行時的狀態 | 🟡 留待對應 Slice                                                                                             | `product-scope.md` 玖                   |
+| 「無法判斷」                   | ✅ 已定案：Check Result 分通過／未通過／無法判斷／不適用；無法判斷 → 建議人工審核，且須與「已確認有問題」區分 | `review-case.md` 4.7、5.3               |
+| 金額不一致                     | ✅ 已定案：以最小貨幣單位精確比對、不設容許誤差，一律建議人工審核                                             | `review-case.md` 4.3、`amount-check.md` |
+| 5–8 條企業規範的條件           | 🔴 **未定案，不得由工程或 AI 自行補完**                                                                       | `review-case.md` 7                      |
+| 疑似重複的判斷條件             | 🔴 **未定案，不得由工程或 AI 自行補完**                                                                       | `review-case.md` 7                      |
+| 合規規則（來源與版本）         | 🔴 **未定案**；來源未確認前只能稱 Demo Compliance Rule                                                        | `review-case.md` 5.2、7                 |
+| Finding 是否需要嚴重程度欄位   | 🔴 未定案                                                                                                     | `review-case.md` 7                      |
+| 處理進度分流                   | ✅ 待處理／待補件／已完成初審／全部                                                                           | `interaction-patterns.md`               |
+
+**與 2026-09-28 的決定衝突之處**：當時選了「Agent 三種動作都可自動執行」與「無法判斷類處理先不沿用」。
+前者與最新 Scope 的「本輪不做自動執行」不一致；後者已被 `review-case.md` 4.7 納入規格。需要重新確認，見第 6 節。
 
 ## 4. 階段三 schema v4 規劃（草案）
 
@@ -87,3 +95,13 @@ PM 已確認以 **CheckMate** 的 PRD 作為最新版本，Demo 也以此為主�
 - 階段三完成後，所有人都要重新 `pnpm --filter api db:reset`。
 - 重構期間 `main` 保持舊版可運作；`refactor` 完成並驗證後再合併。
 - Demo 部署需要 Postgres 與 API 主機，比 CheckMate 前端原型（純靜態）複雜，需提早確認環境。
+
+## 6. 待重新確認（階段二開工前）
+
+CheckMate 目前的 Prototype 是純前端、使用預置分析結果；Product Scope 把「實際初審引擎」與「受控處置」
+列為 Demo Day 目標。因此本 Repo 重構的目標需要重新確認：
+
+1. 重構後的第一個可交付版本，要對齊 CheckMate「本輪 Prototype」（人工處理例外、無自動執行），
+   還是直接做 Demo Day 目標（實際引擎＋受控自動執行）？
+2. 第 3 節標 🔴 的規則條件（企業規範、重複判斷、合規規則）尚未定案。在 PM 定案前，
+   引擎可以先支援「條件類型」，實際門檻以標示為「Demo 規則（待定案）」的 seed 資料暫代，是否接受？

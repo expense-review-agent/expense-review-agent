@@ -93,6 +93,10 @@ CheckMate 對案件只產生三種審查建議：
 
 「建議通過」不代表最終核准。
 
+Agent 與人工共用 PROCEED／REQUEST_INFO／ESCALATE；執行者記錄於稽核紀錄，不另建一套人工動作。「建議通過」也不保證已自動完成：若不符合授權或控制條件，Agent 不執行，交由人工處理。
+
+OVERRIDE 是人工決策覆寫，覆寫後仍需接續適當的流程動作。原始建議、覆寫原因、執行者與時間必須保留。重新分析亦保留歷次紀錄，不覆蓋先前結果；具體流程與例外於各 Feature Spec 收斂。
+
 ## 柒、控制模型（Control Model）
 
 CheckMate 不以模型判斷本身作為自動執行依據。
@@ -115,7 +119,7 @@ CheckMate 不以模型判斷本身作為自動執行依據。
 5. 漸進式自動化（Progressive Automation）
 6. 執行後監控（Post-action Monitoring）
 
-目前 Demo 優先呈現前四項；漸進式自動化與執行後監控作為後續能力。
+Demo Day 方向優先呈現前四項；本輪初審 Prototype 先驗證必要檢核、強制防護與佐證鏈，獨立驗證留待受控處置 Slice。漸進式自動化與執行後監控作為後續能力。
 
 ## 捌、產品邊界（Product Boundary）
 

@@ -93,7 +93,7 @@ CheckMate 聚焦於**費用初審、風險辨識與受控處置**，不是完整
 ├── packages/
 │   └── shared/     # 前後端共用的型別與領域邏輯
 ├── docs/
-│   ├── product/    # CheckMate 產品文件（命題、Brief、Scope、User Flow、Edge Cases）
+│   ├── product/    # CheckMate 產品文件（命題、Discovery、Brief、Scope、PRD 檢查基準）
 │   ├── design/     # Design System 與 Interaction Patterns
 │   └── archive/    # 舊版文件（M1 Review Copilot、OpenSpec 紀錄）
 ├── specs/          # 已收斂的 User Story / Feature 行為規格
@@ -137,8 +137,6 @@ pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build
 | `docs/product/product-discovery.md`                | 市場證據、問題理解與產品假設                         |
 | `docs/product/product-brief.md`                    | 定案的產品方向、核心價值與產品原則                   |
 | `docs/product/product-scope.md`                    | 本次版本的範圍、優先級與邊界                         |
-| `docs/product/user-flow.md`                        | 全局產品流程骨架與待決問題                           |
-| `docs/product/edge-cases.md`                       | 已知關鍵情境                                         |
 | `docs/product/prd-review-criteria.md`              | 撰寫 Spec 與 Acceptance Criteria 的檢查基準          |
 | `docs/design/design-system.md`                     | 視覺、元件與 UX Writing 原則                         |
 | `docs/design/interaction-patterns.md`              | 共用操作流程與互動規則                               |
