@@ -87,6 +87,13 @@ enum AuditEventType {
   CASE_CREATED
   REVIEW_RECORDED
   WORKFLOW_ACTION
+  RECEIPT_READING
+}
+
+/// 一次單據讀取的結果（specs/receipt-reading.md）
+enum ReadingOutcome {
+  SUCCEEDED
+  FAILED
 }
 
 // =============================================================================
@@ -125,16 +132,17 @@ model ExpenseCase {
   reviews     ReviewRecord[]
   actions     WorkflowActionRecord[]
   auditEvents AuditEvent[]
+  readings    ReceiptReading[]
 
   @@index([status])
 }
 
 /// 費用明細。單筆費用的案件也有一列，讓前端不必分兩種資料形狀。
 model ExpenseLine {
-  id     String      @id @default(cuid())
-  caseId String
-  case   ExpenseCase @relation(fields: [caseId], references: [id])
-  lineNo Int
+  id      String      @id @default(cuid())
+  caseId  String
+  case    ExpenseCase @relation(fields: [caseId], references: [id])
+  lineNo  Int
   /// "L008-1"；單筆案件沿用案件編號
   lineKey String
 
@@ -243,18 +251,18 @@ model Finding {
   findingKey String
   orderIndex Int
 
-  dimension   ReviewDimension
-  kind        FindingKind
-  title       String
-  explanation String
-  ruleCode    String?
-  ruleText    String
+  dimension         ReviewDimension
+  kind              FindingKind
+  title             String
+  explanation       String
+  ruleCode          String?
+  ruleText          String
   /// [["申請金額", "NT$1,680"], ...]
-  comparison  Json            @default("[]")
+  comparison        Json            @default("[]")
   /// 疑似重複時被比較的既有案件
   relatedCaseNumber String?
   /// 對案件下一步的影響
-  nextStep    String?
+  nextStep          String?
 
   @@unique([reviewId, findingKey])
   @@unique([reviewId, orderIndex])
@@ -308,4 +316,54 @@ model AuditEvent {
 
   @@unique([caseId, seq])
   @@index([caseId, createdAt])
+}
+
+// =============================================================================
+// 單據讀取（specs/receipt-reading.md，append-only）
+//
+// 開始讀取時寫一筆 ReceiptReading，結束時寫一筆 ReceiptReadingOutcome。
+// 「讀取中」由「還沒有 outcome」推得，兩張表都不需要 UPDATE。
+// 讀取結果不改變審查紀錄、檢查清單與處理進度。
+// =============================================================================
+
+model ReceiptReading {
+  id     String      @id @default(cuid())
+  caseId String
+  case   ExpenseCase @relation(fields: [caseId], references: [id])
+
+  actorType  ActorType
+  actorLabel String
+
+  /// 讀取服務與模型（例如 gemini / gemini-3.8-flash），以及讀取指示的版本
+  provider      String
+  model         String
+  promptVersion String
+  /// 送出的憑證：[{ receiptKey, sha256 }]
+  inputs        Json
+
+  startedAt DateTime @default(now())
+
+  outcome ReceiptReadingOutcome?
+
+  @@index([caseId, startedAt])
+}
+
+model ReceiptReadingOutcome {
+  id        String         @id @default(cuid())
+  readingId String         @unique
+  reading   ReceiptReading @relation(fields: [readingId], references: [id])
+
+  outcome       ReadingOutcome
+  /// 每張憑證的模型原始回應：[{ receiptKey, text }]；失敗時可能只有部分或沒有
+  rawResponses  Json           @default("[]")
+  /// 成功時：{ [receiptKey]: ReceiptExtraction }
+  extractions   Json?
+  /// 成功時：以讀取金額計算的 E-01 結果 [{ lineKey, result }]
+  amountChecks  Json?
+  /// 失敗時的原因（顯示給使用者）
+  failureReason String?
+  /// 讀取服務回報的用量，供估算費用
+  usage         Json?
+
+  finishedAt DateTime @default(now())
 }

@@ -12,6 +12,7 @@ import {
   FINDING_KINDS,
   RECOMMENDATIONS,
   REVIEW_DIMENSIONS,
+  READING_OUTCOMES,
   REVIEW_SOURCES,
   WORKFLOW_ACTIONS,
 } from "../domain/vocabulary.ts";
@@ -40,6 +41,7 @@ const pairs: Array<[string, readonly string[]]> = [
   ["ActorType", ACTOR_TYPES],
   ["ReviewSource", REVIEW_SOURCES],
   ["AuditEventType", AUDIT_EVENT_TYPES],
+  ["ReadingOutcome", READING_OUTCOMES],
 ];
 
 for (const [name, values] of pairs) {

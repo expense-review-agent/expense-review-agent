@@ -8,6 +8,7 @@ import {
   ACTOR_TYPES,
   CASE_STATUSES,
   CHECK_STATUSES,
+  FIELD_STATUSES,
   FINDING_KINDS,
   RECOMMENDATIONS,
   REVIEW_DIMENSIONS,
@@ -202,3 +203,67 @@ export const auditTrailResponseSchema = z.object({
   chainValid: z.boolean(),
 });
 export type AuditTrailResponse = z.infer<typeof auditTrailResponseSchema>;
+
+// ---- 單據讀取（specs/receipt-reading.md） -----------------------------------------
+
+export const fieldStatusSchema = z.enum(FIELD_STATUSES);
+
+/** 單一擷取欄位。格式之外的規則（已辨識必有值等）由 domain/receipt-reading 的 extractionProblems 檢查。 */
+export const extractedFieldSchema = z.object({
+  status: fieldStatusSchema,
+  value: z.string().nullable(),
+});
+
+/** 一張憑證的擷取結果。同時用來驗證 AI 的回應與 API 的回傳。 */
+export const receiptExtractionSchema = z.object({
+  vendor: extractedFieldSchema,
+  issueDate: extractedFieldSchema,
+  totalAmount: extractedFieldSchema,
+  currency: extractedFieldSchema,
+  documentNumber: extractedFieldSchema,
+  taxId: extractedFieldSchema,
+});
+
+export const amountCheckResultSchema = z.object({
+  status: z.enum(["MATCH", "MISMATCH", "MISSING_EVIDENCE", "UNDETERMINED"]),
+  reason: z.string(),
+  applicationCents: z.number().optional(),
+  evidenceCents: z.number().optional(),
+  differenceCents: z.number().optional(),
+  rule: z.literal("E-01 v1"),
+});
+
+/** RUNNING 由「還沒有結果」推得；逾時未完成的讀取視為 FAILED。 */
+export const readingStatusSchema = z.enum(["RUNNING", "SUCCEEDED", "FAILED"]);
+export type ReadingStatus = z.infer<typeof readingStatusSchema>;
+
+export const receiptReadingSchema = z.object({
+  id: z.string(),
+  status: readingStatusSchema,
+  startedAt: z.string(), // ISO datetime
+  finishedAt: z.string().nullable(),
+  actorLabel: z.string(),
+  provider: z.string(),
+  model: z.string(),
+  promptVersion: z.string(),
+  receiptKeys: z.array(z.string()),
+  /** 成功時為 { [receiptKey]: 擷取結果 }；其餘為 null */
+  extractions: z.record(z.string(), receiptExtractionSchema).nullable(),
+  /** 成功時為以讀取金額計算的 E-01 結果 */
+  amountChecks: z
+    .array(z.object({ lineKey: z.string(), result: amountCheckResultSchema }))
+    .nullable(),
+  failureReason: z.string().nullable(),
+});
+export type ReceiptReadingDto = z.infer<typeof receiptReadingSchema>;
+
+// GET /api/cases/:caseNumber/readings（由新到舊）
+export const readingListResponseSchema = z.object({ readings: z.array(receiptReadingSchema) });
+export type ReadingListResponse = z.infer<typeof readingListResponseSchema>;
+
+// POST /api/cases/:caseNumber/readings → 202
+export const startReadingResponseSchema = z.object({
+  readingId: z.string(),
+  status: z.literal("RUNNING"),
+});
+export type StartReadingResponse = z.infer<typeof startReadingResponseSchema>;

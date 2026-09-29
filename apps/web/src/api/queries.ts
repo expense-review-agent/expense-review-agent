@@ -3,6 +3,8 @@ import {
   batchCompleteResponseSchema,
   caseDetailSchema,
   caseListResponseSchema,
+  readingListResponseSchema,
+  startReadingResponseSchema,
   workflowActionResponseSchema,
 } from "@expense-review-agent/shared/browser";
 import type { WorkflowActionRequest } from "@expense-review-agent/shared/browser";
@@ -12,7 +14,35 @@ export const caseKeys = {
   all: ["cases"] as const,
   list: () => ["cases", "list"] as const,
   detail: (caseNumber: string) => ["cases", "detail", caseNumber] as const,
+  readings: (caseNumber: string) => ["cases", "readings", caseNumber] as const,
 };
+
+const READING_POLL_MS = 1000;
+
+/** 單據讀取紀錄（由新到舊）。最新一筆讀取中時每秒輪詢，結束就停。 */
+export function useReadings(caseNumber: string) {
+  return useQuery({
+    queryKey: caseKeys.readings(caseNumber),
+    queryFn: () =>
+      request(`/cases/${encodeURIComponent(caseNumber)}/readings`, readingListResponseSchema),
+    select: (data) => data.readings,
+    refetchInterval: (query) =>
+      query.state.data?.readings[0]?.status === "RUNNING" ? READING_POLL_MS : false,
+  });
+}
+
+/** 開始讀取；伺服器回 202 後重新取得讀取紀錄，進入輪詢。 */
+export function useStartReading(caseNumber: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      request(`/cases/${encodeURIComponent(caseNumber)}/readings`, startReadingResponseSchema, {
+        method: "POST",
+        body: {},
+      }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: caseKeys.readings(caseNumber) }),
+  });
+}
 
 export function useCaseList() {
   return useQuery({

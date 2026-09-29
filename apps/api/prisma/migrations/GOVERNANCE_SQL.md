@@ -13,7 +13,10 @@ Prisma schema 無法表達的資料庫層保證，寫在 `*_governance/migration
 | 4   | 同一筆審查紀錄只處理一次                   | `WorkflowActionRecord.reviewId` unique（schema）               | 「處理後不再提供重複送出入口」                  |
 | 5   | 本輪只支援 TWD；金額不得為負               | CHECK                                                          | `amount-check.md`「單一 TWD」                   |
 
-append-only 的表：`ReviewRecord`、`CheckResult`、`Finding`、`ReviewReceipt`、`WorkflowActionRecord`、`AuditEvent`。
+| 6 | 單據讀取紀錄不被改寫；失敗不留部分結果 | `ReceiptReading`／`ReceiptReadingOutcome` append-only；成功必有擷取結果，失敗必有原因且無擷取結果 | `receipt-reading.md` 4.8、5.3 |
+
+append-only 的表：`ReviewRecord`、`CheckResult`、`Finding`、`ReviewReceipt`、`WorkflowActionRecord`、`AuditEvent`、
+`ReceiptReading`、`ReceiptReadingOutcome`（第 6 點寫在 `*_receipt_reading/migration.sql`）。
 
 `ExpenseCase.status` 是可更新的投影（處理進度），由流程動作在同一交易內推進，不在 append-only 範圍。
 

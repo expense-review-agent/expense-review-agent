@@ -4,14 +4,18 @@
 // 用語依 CheckMate 的 Design System／Interaction Patterns，不自行發明狀態、建議或動作名稱。
 // =============================================================================
 
+import type { AmountCheckResult } from "../domain/amount-check.ts";
 import type { CheckResultData, FindingData } from "../domain/types.ts";
 import type {
   CaseStatus,
+  FieldStatus,
   FindingKind,
+  ReceiptField,
   Recommendation,
   ReviewDimension,
   WorkflowAction,
 } from "../domain/vocabulary.ts";
+import { formatCentsTwd } from "./money.ts";
 import type { ProgressView } from "./workbench.ts";
 
 export const RECOMMENDATION_LABEL: Record<Recommendation, string> = {
@@ -107,4 +111,38 @@ export function recommendationCardBody(review: {
 }): string {
   if (review.recommendation === "APPROVE") return "資料齊全，核對無誤，可完成初審。";
   return review.findings.map((f) => f.nextStep ?? f.explanation).join(" ");
+}
+
+// ---- 單據讀取（specs/receipt-reading.md） -----------------------------------------
+
+export const FIELD_LABEL: Record<ReceiptField, string> = {
+  vendor: "供應商",
+  issueDate: "開立日期",
+  totalAmount: "總金額",
+  currency: "幣別",
+  documentNumber: "憑證號碼",
+  taxId: "統一編號欄位",
+};
+
+/** 「無法辨識」與「單據上沒有此欄位」必須用不同文字（4.3）。 */
+export const FIELD_STATUS_LABEL: Record<FieldStatus, string> = {
+  RECOGNIZED: "已辨識",
+  UNREADABLE: "無法辨識",
+  NOT_ON_RECEIPT: "單據上沒有此欄位",
+};
+
+/** 以讀取金額做 E-01 比對的一句話結論，差額說明方向。 */
+export function amountCheckSummary(result: AmountCheckResult): string {
+  switch (result.status) {
+    case "MATCH":
+      return "金額一致";
+    case "MISSING_EVIDENCE":
+      return "缺憑證";
+    case "UNDETERMINED":
+      return "無法判斷";
+    case "MISMATCH": {
+      const diff = result.differenceCents ?? 0;
+      return `申請金額比憑證${diff > 0 ? "多" : "少"} ${formatCentsTwd(diff)}`;
+    }
+  }
 }

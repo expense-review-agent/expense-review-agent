@@ -148,3 +148,70 @@
 
 事件類型：`CASE_CREATED`、`REVIEW_RECORDED`、`WORKFLOW_ACTION`。
 `chainValid` 為重算 hash chain 的結果；序號缺號、前後 hash 不符或內容被改都會是 `false`。
+
+## POST /api/cases/:caseNumber/readings
+
+依 `specs/receipt-reading.md`，以 AI（目前為 Gemini）讀取案件所有憑證、擷取欄位，並以讀到的金額執行 E-01。
+**不改變審查紀錄、檢查清單與處理進度。** 立刻回 `202`，讀取在背景進行：
+
+```json
+{ "readingId": "cmum…", "status": "RUNNING" }
+```
+
+| 狀態碼 | 情況                           |
+| ------ | ------------------------------ |
+| 400    | 案件沒有憑證                   |
+| 404    | 找不到案件                     |
+| 409    | 此案件已有讀取正在進行         |
+| 500    | 找不到憑證圖檔（部署設定問題） |
+
+沒有設定 `GEMINI_API_KEY` 不會回錯誤碼：讀取紀錄照常建立，結果為 `FAILED`，原因說明尚未設定金鑰。
+
+## GET /api/cases/:caseNumber/readings
+
+```json
+{
+  "readings": [
+    {
+      "id": "cmum…",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-09-29T08:50:00.000Z",
+      "finishedAt": "2026-09-29T08:50:03.000Z",
+      "actorLabel": "財務初審人員",
+      "provider": "gemini",
+      "model": "gemini-3.8-flash",
+      "promptVersion": "receipt-reading-v1",
+      "receiptKeys": ["EV-003"],
+      "extractions": {
+        "EV-003": {
+          "vendor": { "status": "RECOGNIZED", "value": "城際客運（模擬）" },
+          "issueDate": { "status": "RECOGNIZED", "value": "2026-09-18" },
+          "totalAmount": { "status": "RECOGNIZED", "value": "1480" },
+          "currency": { "status": "RECOGNIZED", "value": "TWD" },
+          "documentNumber": { "status": "RECOGNIZED", "value": "EV-003" },
+          "taxId": { "status": "RECOGNIZED", "value": "00000000（示範值）" }
+        }
+      },
+      "amountChecks": [
+        {
+          "lineKey": "EXP-2026-003",
+          "result": {
+            "status": "MISMATCH",
+            "reason": "金額有差異，需由財務人員確認原因。",
+            "applicationCents": 168000,
+            "evidenceCents": 148000,
+            "differenceCents": 20000,
+            "rule": "E-01 v1"
+          }
+        }
+      ],
+      "failureReason": null
+    }
+  ]
+}
+```
+
+- `status`：`RUNNING`（還沒有結果）／`SUCCEEDED`／`FAILED`。開始後超過 90 秒仍沒有結果（例如服務中斷），視為 `FAILED`。
+- 欄位 `status`：`RECOGNIZED`（有值）／`UNREADABLE`／`NOT_ON_RECEIPT`（兩者皆無值）。
+- 失敗時 `extractions` 與 `amountChecks` 為 `null`，不回傳部分結果；`failureReason` 可直接顯示。
+- 模型的原始回應與用量保存在資料庫（`ReceiptReadingOutcome`），供回放與估算費用，不在此回傳。

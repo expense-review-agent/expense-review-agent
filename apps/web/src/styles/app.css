@@ -1442,3 +1442,81 @@ tbody tr:hover .sticky-col {
   line-height: 1.7;
   margin: 0 0 12px;
 }
+
+/* AI 讀取憑證（specs/receipt-reading.md） */
+.reading-section {
+  margin-top: 16px;
+}
+.reading-note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.7;
+  margin: 0 0 12px;
+}
+.reading-note svg {
+  flex-shrink: 0;
+  margin-top: 4px;
+  color: var(--primary);
+}
+.reading-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+.reading-status {
+  font-size: 13px;
+  color: var(--primary);
+  margin: 8px 0;
+}
+.reading-failed {
+  border: 1px solid #f0c9c9;
+  background: #fdf6f6;
+  padding: 12px 14px;
+  border-radius: 6px;
+}
+.reading-failed p {
+  margin: 6px 0;
+}
+.reading-result h3,
+.reading-history h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 12px 0;
+}
+.reading-receipt {
+  margin: 20px 0 0;
+}
+.reading-fields td {
+  font-size: 13px;
+}
+.field-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.field-recognized .field-status {
+  color: #35684e;
+}
+.field-unreadable .field-status {
+  color: #963f3f;
+  font-weight: 600;
+}
+.field-not_on_receipt .field-status {
+  color: var(--muted);
+}
+.reading-meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 12px 0 0;
+}
+.reading-history {
+  margin-top: 20px;
+}
+.finding-row.check-unknown .check-icon,
+.finding-row.check-unknown .check-result-label {
+  color: #7a5a14;
+}

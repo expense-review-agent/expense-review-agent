@@ -40,7 +40,8 @@ export default tseslint.config(
     // Test files use Node's built-in test runner (node:test / node:assert),
     // whose call signatures aren't fully resolvable by the type-aware rules.
     // Disable type-checked rules for tests — they don't need type-aware lint.
-    files: ["**/*.test.ts", "**/*.spec.ts", "**/__tests__/**/*.ts"],
+    // Standalone dev scripts (plain .mjs, outside any tsconfig) get the same treatment.
+    files: ["**/*.test.ts", "**/*.spec.ts", "**/__tests__/**/*.ts", "**/scripts/**/*.mjs"],
     ...tseslint.configs.disableTypeChecked,
   },
   eslintConfigPrettier,

@@ -20,13 +20,15 @@
     "prisma:migrate": "prisma migrate dev",
     "db:seed": "node --experimental-strip-types prisma/seed/index.ts",
     "db:reset": "prisma migrate reset --force",
-    "seed:check": "node --experimental-strip-types --no-warnings prisma/seed/check.ts"
+    "seed:check": "node --experimental-strip-types --no-warnings prisma/seed/check.ts",
+    "eval:reading": "nest build && node scripts/eval-receipt-reading.mjs"
   },
   "prisma": {
     "seed": "node --experimental-strip-types prisma/seed/index.ts"
   },
   "dependencies": {
     "@expense-review-agent/shared": "workspace:*",
+    "@google/genai": "^2.24.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",

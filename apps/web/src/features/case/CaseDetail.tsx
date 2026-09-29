@@ -142,7 +142,7 @@ function CaseDetailBody({
           </section>
         )}
 
-        <ReviewBody key={review.key} detail={detail} review={review} />
+        <ReviewBody key={review.key} detail={detail} review={review} historical={historical} />
 
         <details className="disclosure">
           <summary>初審紀錄（{detail.reviews.length}）</summary>

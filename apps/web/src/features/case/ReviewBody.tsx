@@ -13,6 +13,7 @@ import {
 import type { CaseDetail, CheckTone, ReviewRecord } from "@expense-review-agent/shared/browser";
 import { Modal } from "../../components/Modal";
 import { toneOf } from "../../components/RecommendationBadge";
+import { ReadingPanel } from "./ReadingPanel";
 
 const TONE_ICON: Record<CheckTone, LucideIcon> = {
   ok: Check,
@@ -40,7 +41,16 @@ function RecommendationCard({ review }: { review: ReviewRecord }) {
  * 申請資訊、審查結果與比對、處理建議。
  * 顯示的是「這一筆」審查紀錄：憑證只列當次審查時已提供的，歷史紀錄不顯示後來補入的附件。
  */
-export function ReviewBody({ detail, review }: { detail: CaseDetail; review: ReviewRecord }) {
+export function ReviewBody({
+  detail,
+  review,
+  historical,
+}: {
+  detail: CaseDetail;
+  review: ReviewRecord;
+  /** 正在檢視歷史審查紀錄：不提供讀取憑證（receipt-reading 4.11） */
+  historical: boolean;
+}) {
   const lines = detail.lines;
   const [lineKey, setLineKey] = useState(lines[0]?.key ?? "");
   const [zoom, setZoom] = useState(false);
@@ -241,6 +251,7 @@ export function ReviewBody({ detail, review }: { detail: CaseDetail; review: Rev
             )}
           </details>
         </div>
+        <ReadingPanel detail={detail} historical={historical} />
       </section>
 
       <RecommendationCard review={review} />

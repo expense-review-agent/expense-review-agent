@@ -12,6 +12,7 @@ export * from "./domain/amount-check.ts";
 export * from "./domain/recommendation.ts";
 export * from "./domain/workflow-action.ts";
 export * from "./domain/review-diff.ts";
+export * from "./domain/receipt-reading.ts";
 export * from "./api.ts";
 
 export * from "./presentation/labels.ts";

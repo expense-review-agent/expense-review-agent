@@ -233,6 +233,8 @@ pnpm dev:web                      # 前端 dev server
 pnpm --filter api prisma:migrate  # 套用 migration
 pnpm --filter api db:reset        # 重建 8 筆 demo 案件（會清空資料與處理紀錄）
 pnpm --filter api seed:check      # 不連 DB，驗證 demo 案例是否自洽
+pnpm --filter api eval:reading    # 用示範憑證量測 AI 讀取準確度（會呼叫 Gemini、產生費用）
+node apps/web/scripts/render-fixtures.mjs   # 改了模擬憑證 SVG 後重新產生 PNG
 pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build   # 開 PR 前必跑
 ```
 

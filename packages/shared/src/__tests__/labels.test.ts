@@ -3,7 +3,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { checkRowView, recommendationCardBody } from "../presentation/labels.ts";
+import {
+  FIELD_STATUS_LABEL,
+  amountCheckSummary,
+  checkRowView,
+  recommendationCardBody,
+} from "../presentation/labels.ts";
 import type { FindingData } from "../domain/types.ts";
 
 const finding = (overrides: Partial<FindingData>): FindingData => ({
@@ -82,4 +87,35 @@ test("其他建議依 Finding 的下一步說明，沒有下一步時用原因�
     recommendationCardBody({ recommendation: "MANUAL_REVIEW", findings: [finding({})] }),
     "申請為 NT$1,680，憑證為 NT$1,480。",
   );
+});
+
+test("「無法辨識」與「單據上沒有此欄位」使用不同文字（receipt-reading 4.3）", () => {
+  assert.notEqual(FIELD_STATUS_LABEL.UNREADABLE, FIELD_STATUS_LABEL.NOT_ON_RECEIPT);
+});
+
+test("讀取金額比對的摘要說明差額方向", () => {
+  const base = { rule: "E-01 v1" as const, reason: "r" };
+  assert.equal(
+    amountCheckSummary({
+      ...base,
+      status: "MISMATCH",
+      applicationCents: 168000,
+      evidenceCents: 148000,
+      differenceCents: 20000,
+    }),
+    "申請金額比憑證多 NT$200",
+  );
+  assert.equal(
+    amountCheckSummary({
+      ...base,
+      status: "MISMATCH",
+      applicationCents: 100000,
+      evidenceCents: 105000,
+      differenceCents: -5000,
+    }),
+    "申請金額比憑證少 NT$50",
+  );
+  assert.equal(amountCheckSummary({ ...base, status: "MATCH", differenceCents: 0 }), "金額一致");
+  assert.equal(amountCheckSummary({ ...base, status: "MISSING_EVIDENCE" }), "缺憑證");
+  assert.equal(amountCheckSummary({ ...base, status: "UNDETERMINED" }), "無法判斷");
 });

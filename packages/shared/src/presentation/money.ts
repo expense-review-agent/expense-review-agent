@@ -37,3 +37,9 @@ export function sumAmounts(amounts: readonly string[]): string {
   }
   return `${total / 100n}.${(total % 100n).toString().padStart(2, "0")}`;
 }
+
+/** 以分為單位的金額 → "NT$1,480"；負數取絕對值（方向由呼叫端的文字說明）。 */
+export function formatCentsTwd(cents: number): string {
+  const abs = BigInt(Math.abs(Math.trunc(cents)));
+  return formatTwd(`${abs / 100n}.${(abs % 100n).toString().padStart(2, "0")}`);
+}

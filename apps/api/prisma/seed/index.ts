@@ -94,7 +94,8 @@ async function seedCase(tx: Tx, c: CaseFixture): Promise<void> {
         amount: new Prisma.Decimal(r.amount),
         issueDate: date(r.issueDate),
         hasTaxId: r.hasTaxId,
-        imagePath: `/fixtures/${r.key}.svg`,
+        // 畫面顯示與 AI 讀取用同一張 PNG（由 apps/web/scripts/render-fixtures.mjs 產生）
+        imagePath: `/fixtures/${r.key}.png`,
       },
     });
     receiptIds.set(r.key, receipt.id);
