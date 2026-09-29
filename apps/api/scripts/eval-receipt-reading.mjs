@@ -145,6 +145,21 @@ for (const [key, truth] of Object.entries(TRUTH)) {
     憑證號碼: norm(e.documentNumber.value).replace("–", "-") === key,
     統編狀態: e.taxId.status === truth.taxId,
   };
+  const FIELD_OF = {
+    總金額: "totalAmount",
+    供應商: "vendor",
+    日期: "issueDate",
+    幣別: "currency",
+    憑證號碼: "documentNumber",
+    統編狀態: "taxId",
+  };
+  // 錯的欄位印出模型實際讀到的狀態與值，才能判斷該改讀取指示還是驗收標準
+  const misses = Object.entries(checks)
+    .filter(([, ok]) => !ok)
+    .map(([k]) => {
+      const f = e[FIELD_OF[k]];
+      return `${k}＝${f.status}${f.value === null ? "" : `「${f.value}」`}`;
+    });
   if (!checks.總金額) failures++;
   const detail = Object.entries(checks)
     .map(([k, ok]) => `${ok ? "✓" : "✗"}${k}`)
@@ -152,6 +167,7 @@ for (const [key, truth] of Object.entries(TRUTH)) {
   console.log(
     `${checks.總金額 ? "✓" : "✗"} ${key} ${detail}（讀到金額 ${e.totalAmount.value ?? e.totalAmount.status}）`,
   );
+  if (misses.length) console.log(`    實際讀到：${misses.join("；")}`);
 }
 
 const blurred = await readOne(reader, "EV-900", join(EVAL, "EV-900.png"));
@@ -168,7 +184,8 @@ if (blurred.unavailable) {
 } else {
   addUsage(blurred.usage);
   const amount = blurred.extraction.totalAmount;
-  const ok = amount.status !== "RECOGNIZED";
+  // 金額被遮住：憑證上應該有金額，所以必須是「無法辨識」，不是「單據上沒有此欄位」
+  const ok = amount.status === "UNREADABLE";
   if (!ok) failures++;
   console.log(
     `${ok ? "✓" : "✗"} EV-900 遮蔽金額應為無法辨識：實際 ${amount.status}${amount.value ? `（猜出 ${amount.value}）` : ""}`,

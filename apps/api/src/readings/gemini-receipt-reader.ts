@@ -9,15 +9,16 @@ import type { ReaderResponse, ReceiptImage, ReceiptReader } from "./receipt-read
  *
  * 設定（皆為後端環境變數，金鑰不得出現在前端）：
  * - GEMINI_API_KEY   必填；未設定時每次讀取都以「尚未設定金鑰」失敗，不影響其他功能
- * - GEMINI_MODEL     選填，預設 gemini-3.8-flash（Google 文件列為穩定版的快速多模態模型）
+ * - GEMINI_MODEL     選填，預設 gemini-3.5-flash-lite（穩定版；換模型前先跑 eval:reading）
  * - GEMINI_BASE_URL  選填，只供本機以假服務驗證流程時使用
  *
  * 本類別只負責「送圖、拿回原始文字」。回應是否合乎格式、能不能採用，
  * 由 ReadingsService 以 shared 的 schema 與規則判斷。
  */
 
-export const PROMPT_VERSION = "receipt-reading-v1";
-const DEFAULT_MODEL = "gemini-3.8-flash";
+export const PROMPT_VERSION = "receipt-reading-v2";
+// 以示範憑證量測過（eval:reading，2026-09-29 讀取指示 v2 連續兩次全對）；免費方案每日額度也較寬鬆
+const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 
 const FIELD_SCHEMA = {
   type: "object",
@@ -38,19 +39,26 @@ export const EXTRACTION_JSON_SCHEMA = {
 export const READING_PROMPT = `你是費用初審的單據讀取助手。請讀取圖片中的這一張憑證，只回傳符合指定 JSON schema 的結果。
 
 每個欄位都要給 status 與 value：
-- RECOGNIZED：憑證上清楚印有此欄位，value 填入讀到的內容。
-- UNREADABLE：憑證上應該有此欄位，但模糊、遮蔽或無法可靠判讀。value 必須是 null。
-- NOT_ON_RECEIPT：憑證上沒有此欄位，或欄位明確標示「未提供」。value 必須是 null。
+- RECOGNIZED：欄位清楚可讀，value 照抄讀到的內容。
+- UNREADABLE：這個欄位應該在憑證上，但被遮住、模糊、裁切或無法可靠判讀。value 必須是 null。
+- NOT_ON_RECEIPT：憑證版面上確實沒有這個欄位，或欄位內容明確寫著「未提供」。value 必須是 null。
 
+分辨 UNREADABLE 與 NOT_ON_RECEIPT：只要有一部分被遮住、模糊或看不清楚，就用 UNREADABLE；
+只有在你能清楚看到整張憑證、而且確定沒有這個欄位時，才用 NOT_ON_RECEIPT。
 沒有把握就用 UNREADABLE，絕對不要猜測或推算數值。
 
+只照抄看得到的內容，不判斷內容是否有效或合規（例如統一編號是不是 8 碼數字、是否為示範值），
+那是後續規則的工作。
+
 欄位與格式：
-- vendor：店家或公司名稱，照憑證上的寫法。
+- vendor：店家或公司名稱，完整照抄，包含括號內的文字。
 - issueDate：開立或消費日期，格式 YYYY-MM-DD。
 - totalAmount：含稅總金額，只寫數字，可有最多兩位小數；不要千分位、幣別符號或「元」。
+  每張憑證都應該有總金額；看不到時用 UNREADABLE，不要用 NOT_ON_RECEIPT。
 - currency：幣別代碼。看到 NT$、新台幣、台幣時填 TWD；其他幣別填 ISO 代碼；沒有任何幣別標示時用 NOT_ON_RECEIPT。
 - documentNumber：發票號碼、收據編號或憑證編號，照憑證上的寫法。
-- taxId：統一編號欄位的內容，照憑證上的寫法；沒有此欄位或標示「未提供」時用 NOT_ON_RECEIPT。
+- taxId：「統一編號」欄位的內容，照抄欄位上寫的任何文字（即使不是號碼）。
+  沒有統一編號欄位，或欄位寫「未提供」時，才用 NOT_ON_RECEIPT。
 
 只描述憑證上看得到的內容，不判斷是否合規、是否可報支或真偽。`;
 
