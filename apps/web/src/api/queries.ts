@@ -1,38 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  batchCompleteResponseSchema,
   caseDetailSchema,
-  caseHistoryResponseSchema,
   caseListResponseSchema,
-  dispositionResponseSchema,
-  policyListResponseSchema,
-  relatedCasesResponseSchema,
+  workflowActionResponseSchema,
 } from "@expense-review-agent/shared/browser";
-import type { CaseHistoryScope, DispositionRequest } from "@expense-review-agent/shared/browser";
+import type { WorkflowActionRequest } from "@expense-review-agent/shared/browser";
 import { request } from "./client";
 
 export const caseKeys = {
   all: ["cases"] as const,
   list: () => ["cases", "list"] as const,
-  /** 已結案列表是獨立查詢：總覽刻意不撈這些案件，混在一起會讓統計又算錯。 */
-  closedList: () => ["cases", "list", "closed"] as const,
-  detail: (id: string) => ["cases", id] as const,
-  related: (id: string) => ["cases", id, "related"] as const,
-  history: (id: string, scope: CaseHistoryScope) => ["cases", id, "history", scope] as const,
+  detail: (caseNumber: string) => ["cases", "detail", caseNumber] as const,
 };
-
-export const policyKeys = {
-  all: ["policies"] as const,
-  list: () => ["policies", "list"] as const,
-};
-
-/** Agent 當前的檢查依據（唯讀）。後端已含沒有條文的產品內建 guardrail。 */
-export function usePolicyList() {
-  return useQuery({
-    queryKey: policyKeys.list(),
-    queryFn: () => request("/policies", policyListResponseSchema),
-    select: (data) => data.items,
-  });
-}
 
 export function useCaseList() {
   return useQuery({
@@ -42,52 +22,33 @@ export function useCaseList() {
   });
 }
 
-/** 已結案案件：由後端依流程狀態篩選，不在前端從全部案件過濾。 */
-export function useClosedCaseList() {
+export function useCaseDetail(caseNumber: string) {
   return useQuery({
-    queryKey: caseKeys.closedList(),
-    queryFn: () => request("/cases?caseStatus=REVIEW_CLOSED", caseListResponseSchema),
-    select: (data) => data.items,
+    queryKey: caseKeys.detail(caseNumber),
+    queryFn: () => request(`/cases/${encodeURIComponent(caseNumber)}`, caseDetailSchema),
   });
 }
 
-/** 申請人／部門申請紀錄。以案件為查詢起點（見後端 history 的註解）。 */
-export function useCaseHistory(caseId: string, scope: CaseHistoryScope | null) {
-  return useQuery({
-    queryKey: caseKeys.history(caseId, scope ?? "applicant"),
-    queryFn: () =>
-      request(
-        `/cases/${encodeURIComponent(caseId)}/history?scope=${scope ?? "applicant"}`,
-        caseHistoryResponseSchema,
-      ),
-    enabled: scope !== null,
-  });
-}
-
-export function useCaseDetail(id: string | null) {
-  return useQuery({
-    queryKey: caseKeys.detail(id ?? ""),
-    queryFn: () => request(`/cases/${encodeURIComponent(id ?? "")}`, caseDetailSchema),
-    enabled: id !== null,
-  });
-}
-
-export function useRelatedCases(id: string, enabled: boolean) {
-  return useQuery({
-    queryKey: caseKeys.related(id),
-    queryFn: () => request(`/cases/${encodeURIComponent(id)}/related`, relatedCasesResponseSchema),
-    enabled,
-    select: (data) => data.related,
-  });
-}
-
-export function useDisposition(caseId: string) {
+/** 完成初審／退回補件。成功後重新取得列表與詳情，畫面以伺服器狀態為準。 */
+export function useWorkflowAction(caseNumber: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: DispositionRequest) =>
-      request(`/cases/${encodeURIComponent(caseId)}/disposition`, dispositionResponseSchema, {
+    mutationFn: (body: WorkflowActionRequest) =>
+      request(`/cases/${encodeURIComponent(caseNumber)}/actions`, workflowActionResponseSchema, {
         method: "POST",
         body,
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: caseKeys.all }),
+  });
+}
+
+export function useBatchComplete() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (caseNumbers: string[]) =>
+      request("/cases/batch-complete", batchCompleteResponseSchema, {
+        method: "POST",
+        body: { caseNumbers },
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: caseKeys.all }),
   });

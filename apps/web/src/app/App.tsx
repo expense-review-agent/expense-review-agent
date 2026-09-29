@@ -1,30 +1,12 @@
 import { AppShell } from "./AppShell";
-import { useRoute, closeCase } from "./router";
-import { QueuePage } from "../features/queue/QueuePage";
-import { ClosedCasesPage } from "../features/closed/ClosedCasesPage";
-import { PoliciesPage } from "../features/policies/PoliciesPage";
-import { CaseDrawer } from "../features/detail/CaseDrawer";
+import { useSelectedCaseNumber } from "./router";
+import { WorkbenchPage } from "../features/workbench/WorkbenchPage";
 
 export function App() {
-  const route = useRoute();
-
+  const selectedCaseNumber = useSelectedCaseNumber();
   return (
-    <AppShell page={route.name}>
-      {route.name === "policies" ? (
-        <PoliciesPage />
-      ) : route.name === "closed" ? (
-        <ClosedCasesPage activeCaseId={route.caseId} />
-      ) : (
-        <QueuePage activeCaseId={route.caseId} />
-      )}
-      {route.caseId && (
-        <CaseDrawer
-          key={route.caseId}
-          caseId={route.caseId}
-          page={route.name}
-          onClose={() => closeCase(route.name)}
-        />
-      )}
+    <AppShell caseOpen={selectedCaseNumber !== null}>
+      <WorkbenchPage selectedCaseNumber={selectedCaseNumber} />
     </AppShell>
   );
 }

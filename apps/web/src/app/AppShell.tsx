@@ -1,127 +1,101 @@
+import { useState } from "react";
 import type { ReactNode } from "react";
-import { t } from "@expense-review-agent/shared/browser";
-import { pageHref } from "./router";
-import type { PageName } from "./router";
+import { Check, ChevronDown, ClipboardList, Menu, PanelLeftClose } from "lucide-react";
+import { Modal } from "../components/Modal";
+import { closeCase } from "./router";
 
-function ClipboardIcon() {
+/**
+ * 左側導覽 + 頂列帳號選單。開啟案件詳情時導覽自動收合（product-scope.md 本輪 Prototype）。
+ */
+export function AppShell({ caseOpen, children }: { caseOpen: boolean; children: ReactNode }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [about, setAbout] = useState(false);
+  const narrow = collapsed || caseOpen;
+
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width="18"
-      height="18"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      aria-hidden="true"
-    >
-      <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" />
-      <rect x="9" y="3" width="6" height="4" rx="1" />
-      <path d="M9 14l2 2 4-4" />
-    </svg>
-  );
-}
-
-/** 本月標籤（例：2026 年 9 月）。 */
-function monthLabel(date = new Date()): string {
-  return `${date.getFullYear()} 年 ${date.getMonth() + 1} 月`;
-}
-
-/** 頂列 + 側邊主選單。本輪開放「案件總覽」與「已結案案件」，其餘入口標示即將推出。 */
-export function AppShell({ children, page }: { children: ReactNode; page: PageName }) {
-  return (
-    <>
-      <header className="topbar">
-        <div className="topbar__logo">
-          <ClipboardIcon />
-          AI 費用單據初審 Agent
-        </div>
-        <div className="topbar__right">
-          <span>{monthLabel()}</span>
-          <span
-            className="avatar"
-            title="財務初審人員（示範帳號）"
-            aria-label="財務初審人員（示範帳號）"
-          >
-            審
+    <div className={`app-shell ${narrow ? "nav-collapsed" : ""}`}>
+      <nav className="sidebar" aria-label="主要導覽">
+        <a className="brand" href="#/" aria-label="CheckMate 首頁">
+          <span className="brand-mark">
+            <Check size={22} strokeWidth={3} aria-hidden="true" />
           </span>
+          {!narrow && <span>CheckMate</span>}
+        </a>
+        <div className="nav-group">
+          {!narrow && <span className="nav-caption">工作空間</span>}
+          <button
+            type="button"
+            className="nav-item active"
+            aria-current="page"
+            title="案件初審"
+            onClick={closeCase}
+          >
+            <ClipboardList size={21} aria-hidden="true" />
+            {!narrow && "案件初審"}
+          </button>
         </div>
-      </header>
+        <button
+          type="button"
+          className="nav-toggle"
+          title={narrow ? "展開導覽" : "收合導覽"}
+          onClick={() => {
+            if (caseOpen) closeCase();
+            setCollapsed(!narrow);
+          }}
+        >
+          {narrow ? (
+            <Menu size={20} aria-label="展開導覽" />
+          ) : (
+            <>
+              <PanelLeftClose size={20} aria-hidden="true" />
+              收合導覽
+            </>
+          )}
+        </button>
+      </nav>
 
-      <div className="layout">
-        <nav className="side" aria-label="主選單">
-          <div className="side__label">主選單</div>
-          <a
-            className={`side__item${page === "queue" ? " side__item--on" : ""}`}
-            href={pageHref("queue")}
-            aria-current={page === "queue" ? "page" : undefined}
-          >
-            <svg
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              aria-hidden="true"
-            >
-              <rect x="2" y="2" width="5" height="5" rx="1" />
-              <rect x="9" y="2" width="5" height="5" rx="1" />
-              <rect x="2" y="9" width="5" height="5" rx="1" />
-              <rect x="9" y="9" width="5" height="5" rx="1" />
-            </svg>
-            案件總覽
-          </a>
-          <a
-            className={`side__item${page === "closed" ? " side__item--on" : ""}`}
-            href={pageHref("closed")}
-            aria-current={page === "closed" ? "page" : undefined}
-          >
-            <svg
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              aria-hidden="true"
-            >
-              <path d="M2 4.5h12v9H2zM2 4.5 4 2h8l2 2.5M6 8h4" />
-            </svg>
-            {t("closed.title")}
-          </a>
-          {/* 可點擊且會導覽，所以**不能**帶 aria-disabled——那會讓輔助技術報出
-              與實際行為相反的狀態。「即將推出」徽章保留：指的是完整的規範管理
-              （編輯、版本切換）尚未提供，而這個頁面是唯讀預覽。 */}
-          <a
-            className={`side__item side__item--preview${page === "policies" ? " side__item--on" : ""}`}
-            href={pageHref("policies")}
-            aria-current={page === "policies" ? "page" : undefined}
-            aria-label={t("policy.nav.aria")}
-          >
-            <svg
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              aria-hidden="true"
-            >
-              <path d="M2 4h12M2 8h12M2 12h8" />
-            </svg>
-            {t("policy.title")}
-            <span className="side__soon">即將推出</span>
-          </a>
-          <span className="side__item side__item--off" aria-disabled="true">
-            <svg
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              aria-hidden="true"
-            >
-              <path d="M4 2v12M12 2v12M2 8h12" />
-            </svg>
-            稽核紀錄<span className="side__soon">即將推出</span>
-          </span>
-        </nav>
-
-        <main className="content">{children}</main>
+      <div className="workspace">
+        <header className="topbar">
+          <span>財務工作台</span>
+          <details className="account">
+            <summary>
+              <span className="avatar">財</span>
+              <span>財務初審人員</span>
+              <ChevronDown size={15} aria-hidden="true" />
+            </summary>
+            <div className="account-menu">
+              <strong>財務初審人員</strong>
+              <p>CheckMate 工作空間</p>
+              <button
+                type="button"
+                onClick={(e) => {
+                  setAbout(true);
+                  e.currentTarget.closest("details")?.removeAttribute("open");
+                }}
+              >
+                關於此展示
+              </button>
+            </div>
+          </details>
+        </header>
+        {children}
       </div>
-    </>
+
+      {about && (
+        <Modal title="關於此展示" onClose={() => setAbout(false)}>
+          <p>CheckMate 費用案件初審工作台。</p>
+          <p>
+            所有案件、規範與初審結果皆為預置模擬資料，尚未串接 OCR、AI 分析、通知或審核系統。
+            處理紀錄會保存在資料庫中，重新整理後仍會保留。
+          </p>
+          <p>初審建議僅供財務人員判斷，不代表最終核准、付款或稅務認定。</p>
+          <div className="modal-actions">
+            <button type="button" className="primary" onClick={() => setAbout(false)}>
+              知道了
+            </button>
+          </div>
+        </Modal>
+      )}
+    </div>
   );
 }
