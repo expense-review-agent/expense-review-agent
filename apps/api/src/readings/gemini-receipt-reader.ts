@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { GoogleGenAI } from "@google/genai";
 import { FIELD_STATUSES, RECEIPT_FIELDS } from "@expense-review-agent/shared";
-import { ReaderConfigError } from "./receipt-reader";
+import { ReaderConfigError, ReaderUnavailableError } from "./receipt-reader";
 import type { ReaderResponse, ReceiptImage, ReceiptReader } from "./receipt-reader";
 
 /**
@@ -54,6 +54,29 @@ export const READING_PROMPT = `你是費用初審的單據讀取助手。請讀�
 
 只描述憑證上看得到的內容，不判斷是否合規、是否可報支或真偽。`;
 
+/**
+ * 把 Gemini 的「暫時無法使用」錯誤轉成 ReaderUnavailableError；其他錯誤回傳 null。
+ * 狀態碼取自 SDK 錯誤物件的 statusCode／status（APIError 與 GoogleGenAiError 皆有 statusCode）。
+ */
+export function classifyGeminiError(error: unknown): ReaderUnavailableError | null {
+  if (!(error instanceof Error)) return null;
+  const { statusCode, status } = error as { statusCode?: unknown; status?: unknown };
+  const code =
+    typeof statusCode === "number" ? statusCode : typeof status === "number" ? status : null;
+  if (code === 429) {
+    return /per day|daily/i.test(error.message)
+      ? new ReaderUnavailableError(
+          "daily_quota",
+          "AI 讀取服務今日的使用額度已用完，請明天再試，或升級服務方案。",
+        )
+      : new ReaderUnavailableError("rate_limited", "AI 讀取服務請求過於頻繁，請稍後再試。");
+  }
+  if (code !== null && code >= 500) {
+    return new ReaderUnavailableError("busy", "AI 讀取服務目前忙碌，請稍後重試。");
+  }
+  return null;
+}
+
 @Injectable()
 export class GeminiReceiptReader implements ReceiptReader {
   readonly provider = "gemini";
@@ -73,22 +96,29 @@ export class GeminiReceiptReader implements ReceiptReader {
   }
 
   async read(image: ReceiptImage, signal: AbortSignal): Promise<ReaderResponse> {
-    const interaction = await this.getClient().interactions.create(
-      {
-        model: this.model,
-        input: [
-          { type: "text", text: READING_PROMPT },
-          { type: "image", data: image.base64, mime_type: image.mimeType },
-        ],
-        response_format: {
-          type: "text",
-          mime_type: "application/json",
-          schema: EXTRACTION_JSON_SCHEMA,
+    const client = this.getClient();
+    let interaction: Awaited<ReturnType<typeof client.interactions.create>>;
+    try {
+      interaction = await client.interactions.create(
+        {
+          model: this.model,
+          input: [
+            { type: "text", text: READING_PROMPT },
+            { type: "image", data: image.base64, mime_type: image.mimeType },
+          ],
+          response_format: {
+            type: "text",
+            mime_type: "application/json",
+            schema: EXTRACTION_JSON_SCHEMA,
+          },
+          generation_config: { thinking_level: "low" },
         },
-        generation_config: { thinking_level: "low" },
-      },
-      { fetchOptions: { signal }, maxRetries: 1 },
-    );
+        // 不讓 SDK 自動重試：免費方案有每日額度，失敗的請求也算次數；要不要重試由呼叫端決定
+        { fetchOptions: { signal }, maxRetries: 0 },
+      );
+    } catch (error) {
+      throw classifyGeminiError(error) ?? error;
+    }
 
     const text = interaction.output_text;
     if (interaction.status !== "completed" || typeof text !== "string") {

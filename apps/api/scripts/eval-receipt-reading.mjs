@@ -24,6 +24,7 @@ const apiRoot = join(here, "..");
 if (existsSync(join(apiRoot, ".env"))) process.loadEnvFile(join(apiRoot, ".env"));
 
 const { GeminiReceiptReader } = require("../dist/readings/gemini-receipt-reader.js");
+const { ReaderUnavailableError } = require("../dist/readings/receipt-reader.js");
 const { receiptExtractionSchema, extractionProblems } = require("@expense-review-agent/shared");
 
 const FIXTURES = join(apiRoot, "..", "web", "public", "fixtures");
@@ -43,21 +44,10 @@ const TRUTH = {
 const sameAmount = (a, b) => a !== null && Number(a) === Number(b);
 const norm = (s) => (s ?? "").replace(/\s+/g, "");
 
-const ATTEMPTS = 3;
+// 免費方案有每日額度，每次請求（含失敗）都算次數，所以最多只試 2 次
+const ATTEMPTS = 2;
 // EVAL_FAST 只用來以本機假服務驗證重試邏輯，實際量測不要設定
-const BACKOFF_MS = process.env.EVAL_FAST ? [10, 10] : [5_000, 15_000];
-const TRANSIENT_STATUS = new Set([429, 500, 502, 503, 504]);
-
-/** 服務暫時無法使用（負載過高、限流、逾時）：值得重試，且不代表讀錯。 */
-function isTransient(error) {
-  if (!(error instanceof Error)) return false;
-  const status = error.status ?? error.statusCode ?? Number(/^(\d{3})\s/.exec(error.message)?.[1]);
-  return (
-    TRANSIENT_STATUS.has(status) ||
-    error.name === "AbortError" ||
-    /aborted|timed? ?out|high demand|unavailable/i.test(error.message)
-  );
-}
+const BACKOFF_MS = process.env.EVAL_FAST ? [10] : [15_000];
 
 async function attempt(reader, key, bytes) {
   const controller = new AbortController();
@@ -67,15 +57,17 @@ async function attempt(reader, key, bytes) {
       { receiptKey: key, mimeType: "image/png", base64: bytes.toString("base64") },
       controller.signal,
     );
+  } catch (error) {
+    // 自己的 60 秒逾時中止，視同服務忙碌
+    if (controller.signal.aborted) {
+      throw new ReaderUnavailableError("busy", "超過 60 秒沒有回應");
+    }
+    throw error;
   } finally {
     clearTimeout(timer);
   }
 }
 
-/**
- * 讀一張憑證。服務暫時性錯誤最多重試 ATTEMPTS 次，仍失敗則回報 unavailable（無法量測），
- * 與「讀出來但不合格式」或「讀錯」分開計算。
- */
 async function readOne(reader, key, file) {
   const bytes = readFileSync(file);
   for (let i = 1; i <= ATTEMPTS; i++) {
@@ -84,7 +76,9 @@ async function readOne(reader, key, file) {
       response = await attempt(reader, key, bytes);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (!isTransient(error)) return { key, error: message };
+      if (!(error instanceof ReaderUnavailableError)) return { key, error: message };
+      // 今日額度用完：再試只會繼續失敗，整批停止
+      if (error.kind === "daily_quota") return { key, quotaExhausted: message };
       if (i === ATTEMPTS) return { key, unavailable: message };
       console.log(
         `  … ${key} 第 ${i} 次：服務暫時無法使用，${BACKOFF_MS[i - 1] / 1000} 秒後重試（${message.slice(0, 60)}）`,
@@ -126,6 +120,11 @@ const addUsage = (u) => u && Object.keys(totals).forEach((k) => (totals[k] += u[
 
 for (const [key, truth] of Object.entries(TRUTH)) {
   const r = await readOne(reader, key, join(FIXTURES, `${key}.png`));
+  if (r.quotaExhausted) {
+    console.log(`\n■ 停止量測：${r.quotaExhausted}`);
+    console.log(`  已量測的結果如上；未量測的憑證請等額度恢復後重跑。`);
+    process.exit(3);
+  }
   if (r.unavailable) {
     unavailable++;
     console.log(`? ${key} 無法量測（服務暫時無法使用，已重試 ${ATTEMPTS} 次）：${r.unavailable}`);
@@ -156,6 +155,10 @@ for (const [key, truth] of Object.entries(TRUTH)) {
 }
 
 const blurred = await readOne(reader, "EV-900", join(EVAL, "EV-900.png"));
+if (blurred.quotaExhausted) {
+  console.log(`\n■ 停止量測：${blurred.quotaExhausted}`);
+  process.exit(3);
+}
 if (blurred.unavailable) {
   unavailable++;
   console.log(`? EV-900 無法量測（服務暫時無法使用）：${blurred.unavailable}`);

@@ -26,3 +26,18 @@ export interface ReceiptReader {
 
 /** 設定問題（例如沒有金鑰）：訊息可直接顯示給使用者。 */
 export class ReaderConfigError extends Error {}
+
+/**
+ * 讀取服務暫時無法使用（忙碌、太頻繁、今日額度用完）。訊息可直接顯示給使用者。
+ * 與讀錯不同：不代表 AI 讀不懂這張憑證。
+ */
+export type UnavailableKind = "busy" | "rate_limited" | "daily_quota";
+
+export class ReaderUnavailableError extends Error {
+  constructor(
+    readonly kind: UnavailableKind,
+    message: string,
+  ) {
+    super(message);
+  }
+}

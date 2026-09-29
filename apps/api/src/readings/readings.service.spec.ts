@@ -8,7 +8,7 @@
 
 import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
 import { ReadingsService } from "./readings.service";
-import { ReaderConfigError } from "./receipt-reader";
+import { ReaderConfigError, ReaderUnavailableError } from "./receipt-reader";
 import type { ReaderResponse, ReceiptImage, ReceiptReader } from "./receipt-reader";
 import type { ReceiptImageStore } from "./receipt-image-store";
 import type { AuditEntry, AuditService } from "../audit/audit.service";
@@ -201,6 +201,20 @@ describe("ReadingsService — 失敗時整次不採用（4.8）", () => {
       ),
     );
     expect(outcome.failureReason).toContain("GEMINI_API_KEY");
+  });
+
+  it("今日額度用完：直接告訴使用者，不當成一般錯誤", async () => {
+    const outcome = await failedOutcome(() =>
+      Promise.reject(
+        new ReaderUnavailableError(
+          "daily_quota",
+          "AI 讀取服務今日的使用額度已用完，請明天再試，或升級服務方案。",
+        ),
+      ),
+    );
+    expect(outcome.failureReason).toBe(
+      "AI 讀取服務今日的使用額度已用完，請明天再試，或升級服務方案。",
+    );
   });
 
   it("讀取服務錯誤：不外洩內部訊息", async () => {

@@ -25,7 +25,7 @@ import type {
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { ReceiptImageStore } from "./receipt-image-store";
-import { RECEIPT_READER, ReaderConfigError } from "./receipt-reader";
+import { RECEIPT_READER, ReaderConfigError, ReaderUnavailableError } from "./receipt-reader";
 import type { ReceiptImage, ReceiptReader } from "./receipt-reader";
 
 /** 本輪沒有登入；觸發讀取的人一律記為示範角色。 */
@@ -252,7 +252,13 @@ export class ReadingsService implements OnApplicationShutdown {
 
   private failureReason(error: unknown, aborted: boolean): string {
     if (aborted) return MESSAGES.timeout;
-    if (error instanceof ReadingFailure || error instanceof ReaderConfigError) return error.message;
+    if (
+      error instanceof ReadingFailure ||
+      error instanceof ReaderConfigError ||
+      error instanceof ReaderUnavailableError
+    ) {
+      return error.message;
+    }
     this.logger.error("AI 讀取服務錯誤", error as Error);
     return MESSAGES.provider;
   }
