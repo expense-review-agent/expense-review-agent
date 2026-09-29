@@ -3,9 +3,9 @@
 本文件定義 AI 協作者在本 Repo 中的基本工作規則。產品方向以 **CheckMate** 的產品文件為準
 （`docs/product/`、`docs/design/`、`specs/`），本 Repo 提供其後端、資料庫與前端實作。
 
-> **重構進行中（`refactor` 分支）**：現有程式碼（schema v3、處置矩陣、主管稽核等）
-> 是舊版 M1 Review Copilot 的實作，正依 CheckMate PRD 分階段重建。
-> 進度與各階段範圍見 `docs/PROJECT_STATUS.md`。舊程式碼是待替換的實作，**不是需求來源**。
+> **目前版本**：對齊 CheckMate「Expense Case Review Prototype」，審查結果為預置的模擬資料
+> （`source = PRESET`），由後端與資料庫保存，人工處理例外案件。尚無審查引擎與自動執行。
+> 現況與下一步見 `docs/PROJECT_STATUS.md`。
 
 ---
 
@@ -52,17 +52,18 @@
 
 以下是把上述產品原則落實到資料與程式層的保證，違反等於產品失效。
 
-1. **每個非通過的發現項目都必須有佐證。** 阻擋型或需處理的 Finding 沒有對應佐證資料
-   （Evidence）就是 bug。DB 層以 CHECK 約束保證，不要繞過。
+1. **每個 Finding 都必須能回溯到判斷依據**（規則代碼與條文、對應憑證或對照案件，
+   `specs/review-case.md` 5.6）。沒有依據的 Finding 就是 bug；DB 層以 CHECK 約束保證，不要繞過。
 2. **不指控。** 重複申報、拆單、真偽等風險訊號只能表述為「疑似」，不做舞弊或偽造的定論。
-3. **資料不足不得建議通過。** 關鍵欄位缺漏、來源衝突、超出目前能判斷的範圍
-   （例如非 TWD 幣別）→ 建議補件或建議人工審核，不得建議通過，更不得自動 PROCEED。
-4. **自動執行必須可被驗證。** Agent 執行任何 Workflow Action 前，必須留下
-   自動執行條件逐項的評估結果；條件未全數滿足時，不得由 Agent 執行。
-5. **原始結果永不消失。** 稽核紀錄、流程動作紀錄只能新增，DB trigger 會擋 UPDATE 與 DELETE。
-   重新評估產生新的審查紀錄，不覆蓋舊紀錄；任何「修正歷史」的需求都是新增一筆事件。
-6. **判定必須可回放。** 每次審查記錄當時的規範版本、引擎版本與輸入快照，
-   不得用新版規範回溯評斷舊案件。
+3. **資料不足不得建議通過。** 關鍵欄位缺漏、來源衝突、超出目前能判斷的範圍 → 建議補件或
+   建議人工審核；「無法判斷」必須與「已確認有問題」分開呈現（`review-case.md` 4.7）。
+   本輪只支援 TWD（DB 約束保證）。
+4. **自動執行必須可被驗證。**（本輪不做自動執行）將來 Agent 執行任何 Workflow Action 前，
+   必須留下自動執行條件逐項的評估結果；條件未全數滿足時，不得由 Agent 執行。
+5. **原始結果永不消失。** 審查紀錄、處理紀錄、稽核事件只能新增，DB trigger 會擋
+   UPDATE／DELETE／TRUNCATE。重新審查產生新的審查紀錄，不覆蓋舊紀錄；人工處理不改寫原始建議。
+6. **判定必須可回放。** 每筆審查紀錄保存當時的判斷依據與憑證快照；接上審查引擎後，
+   另外記錄引擎版本、規則版本與輸入快照。不得用新版規則回溯改寫舊紀錄。
 
 ## 5. 技術棧與架構
 
@@ -74,10 +75,11 @@ pnpm monorepo：
 
 架構約定：
 
-- **領域邏輯只寫一份，放在 `packages/shared`。** 審查引擎、審查建議推導、
-  自動執行條件評估、顯示用的文案對照，前後端都引用同一份，不得各自實作。
-- **審查 API 設計成非同步**：`POST /cases/:id/runs` 回 `202 + runId`，前端輪詢 run 狀態。
-  之後替換引擎或接 OCR 只換 runner 實作，不改 API 契約。
+- **領域邏輯只寫一份，放在 `packages/shared`。** 檢查規則（如 E-01 金額比對）、審查建議推導、
+  流程動作規則、顯示用的文案對照，前後端都引用同一份，不得各自實作。
+  `domain/` 不依賴 zod，seed 會直接 import 其 TS 原始碼。
+- **接上審查引擎時，執行審查的 API 設計成非同步**（回 `202` 與執行識別，前端輪詢狀態），
+  之後替換引擎或接 OCR 只換 runner 實作，不改 API 契約。本輪沒有這支 API。
 - **不引入 Redis / BullMQ / pgvector / OCR / LLM 相依套件。** Product Scope 明列
   Production 等級的 Pipeline、Observability、Retry、Auth/RBAC 不在範圍。
 - 擷取資料以 seed 的結構化資料為準，不做真實 OCR。
@@ -88,8 +90,11 @@ pnpm monorepo：
 
 - **禁止 `prisma db push`。** 一律 `prisma migrate dev`。
 - **禁止修改已經 commit 的 migration 檔案。** 要改就新增一個 migration。
-  唯一例外是重構階段三的「schema v4 基準重設」，由 schema owner 執行並於 PR 中說明。
-- DB 層的 trigger、CHECK、EXCLUDE 約束寫在 migration 的 SQL 裡。這些是治理保證，不是可選項。
+  （2026-09-29 的 schema v4 已重設過一次基準，舊 migration 保留在 tag `era-m1-final`；此後不再重設。）
+- DB 層的 trigger、CHECK 約束寫在 `*_governance/migration.sql`，說明見
+  `prisma/migrations/GOVERNANCE_SQL.md`。這些是治理保證，不是可選項。
+- 預置的審查結果寫入前，seed 會驗證它符合 shared 的產品規則並與 E-01 金額比對一致；
+  改 `prisma/seed/fixtures.ts` 後跑 `pnpm --filter api seed:check`。
 - schema 與 migrations 有指定 owner，見 `.github/CODEOWNERS`。需要改 schema 時**先問，不要自己動**。
 - 重置資料一律用 `db:reset`，不要 `TRUNCATE` 或逐表 `DELETE`。
 
@@ -195,10 +200,11 @@ Bug Fix、Refactor、Chore、Spike 等非產品功能變更可以獨立處理，
 
 ## 13. 寫程式的風格
 
-- 領域邏輯放 `packages/shared`，用 Zod 定義並匯出型別。
+- 領域邏輯放 `packages/shared/src/domain`（純 TS）；API 契約用 Zod 定義在 `api.ts`。
 - 金額一律 `Prisma.Decimal`（前端與 shared 以字串傳遞），**不要用 JS number 做金額運算**。
-  浮點誤差會讓比對結果不穩定，這在對帳產品是致命的。邊界轉換寫在 DTO 層。
-- enum 值用英文，顯示文案集中在 shared 的文案對照表。
+  浮點誤差會讓比對結果不穩定，這在對帳產品是致命的。加總與格式化用 shared 的 `money.ts`（BigInt 分）。
+- enum 值用英文，並與 `domain/vocabulary.ts` 一一對應（enum-parity 測試）；
+  顯示文案集中在 `presentation/labels.ts`。
 
 ## 14. 指令
 
@@ -206,7 +212,8 @@ Bug Fix、Refactor、Chore、Spike 等非產品功能變更可以獨立處理，
 pnpm dev:api                      # 後端 dev server
 pnpm dev:web                      # 前端 dev server
 pnpm --filter api prisma:migrate  # 套用 migration
-pnpm --filter api db:reset        # 重建 demo 案件（會清空資料）
+pnpm --filter api db:reset        # 重建 8 筆 demo 案件（會清空資料與處理紀錄）
+pnpm --filter api seed:check      # 不連 DB，驗證 demo 案例是否自洽
 pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build   # 開 PR 前必跑
 ```
 

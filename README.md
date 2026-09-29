@@ -8,11 +8,12 @@ CheckMate 是企業費用審查中的代理式（Agentic）服務，協助完成
 <p>
   <img alt="stack" src="https://img.shields.io/badge/stack-React_%7C_NestJS_%7C_Prisma_%7C_PostgreSQL-3E4F58">
   <img alt="workflow" src="https://img.shields.io/badge/workflow-Spec_%2B_TDD-8F5E12">
-  <img alt="status" src="https://img.shields.io/badge/status-refactoring_to_CheckMate_PRD-B03A2E">
+  <img alt="status" src="https://img.shields.io/badge/status-Case_Review_Prototype-B03A2E">
 </p>
 
-> **重構進行中**：本 Repo 原為 expense-review-agent（M1 Review Copilot），
-> 正在 `refactor` 分支依 CheckMate PRD 分階段重建。進度見 [docs/PROJECT_STATUS.md](./docs/PROJECT_STATUS.md)。
+> **現況**：本 Repo 原為 expense-review-agent（M1 Review Copilot），已依 CheckMate PRD 重構，
+> 目前對齊 CheckMate「Expense Case Review Prototype」：8 筆模擬案件、預置的審查結果、人工處理例外與審查歷史，
+> 由後端與資料庫保存。尚未串接 OCR、審查引擎或自動執行。詳見 [docs/PROJECT_STATUS.md](./docs/PROJECT_STATUS.md)。
 
 ---
 
@@ -74,14 +75,14 @@ CheckMate 聚焦於**費用初審、風險辨識與受控處置**，不是完整
 
 ## 伍、技術棧
 
-| 層       | 技術                                                         |
-| -------- | ------------------------------------------------------------ |
-| 前端     | React + TypeScript + Vite、TanStack Query、Zod（`apps/web`） |
-| 後端     | NestJS + TypeScript、Prisma ORM（`apps/api`）                |
-| 共用     | Zod schema、型別與領域邏輯（`packages/shared`）              |
-| 資料庫   | PostgreSQL                                                   |
-| Monorepo | pnpm workspaces                                              |
-| 開發流程 | Spec + Acceptance Criteria → Test-first → Implementation     |
+| 層       | 技術                                                                       |
+| -------- | -------------------------------------------------------------------------- |
+| 前端     | React + TypeScript + Vite、TanStack Query、Zod、Lucide React（`apps/web`） |
+| 後端     | NestJS + TypeScript、Prisma ORM（`apps/api`）                              |
+| 共用     | Zod schema、型別與領域邏輯（`packages/shared`）                            |
+| 資料庫   | PostgreSQL                                                                 |
+| Monorepo | pnpm workspaces                                                            |
+| 開發流程 | Spec + Acceptance Criteria → Test-first → Implementation                   |
 
 ## 陸、專案結構
 

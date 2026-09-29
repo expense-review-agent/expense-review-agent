@@ -18,19 +18,15 @@
 
 ## 步驟一：把 CODEOWNERS 佔位帳號換成真人 — 🟡 待補組員 ID
 
-[`CODEOWNERS`](../CODEOWNERS) 已依三人分工指派：
+[`.github/CODEOWNERS`](../.github/CODEOWNERS) 的指派：
 
-- [x] schema / migration / 領域契約 → `@ChichiTung`（schema owner）
-- [x] 後端 review 模組 → `@ChichiTung`（後端引擎）
-- [ ] 前端待審佇列頁 → `@memberA`（主前端邏輯）
-- [ ] 前端案件詳情頁 + 共用元件 → `@memberA`（主前端邏輯）
-- [ ] 前端稽核頁 → `@memberB`（較單純前端）
+- [x] schema / migration / 領域邏輯 / specs → `@ChichiTung`（schema owner）
+- [x] 後端案件模組（`apps/api/src/cases/`）→ `@ChichiTung`
+- [ ] 前端工作台（`features/workbench/`）→ `@memberA`
+- [ ] 前端案件詳情 + 共用元件（`features/case/`、`components/`）→ `@memberA`
 
-> ⚠️ **`@memberA` / `@memberB` 仍是佔位**，請把它們換成兩位組員的實際 GitHub ID
-> （`CODEOWNERS` 檔內同樣有兩處 TODO 待替換）。換完才算真正生效。
->
-> 分工對應：@ChichiTung 後端引擎；@memberA 主前端（queue + detail + 共用元件，較複雜）；
-> @memberB 較單純前端（audit 稽核頁，唯讀）。
+> ⚠️ **`@memberA` 仍是佔位**，請換成組員的實際 GitHub ID。換完才算真正生效。
+> 重構後已沒有獨立的稽核頁，原本指派給 `@memberB` 的路徑已移除；需要時再依新的分工補上。
 
 ## 步驟二：開啟 Branch protection（讓 CODEOWNERS 有強制力）
 
