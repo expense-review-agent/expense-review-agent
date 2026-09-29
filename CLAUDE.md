@@ -80,9 +80,26 @@ pnpm monorepo：
   `domain/` 不依賴 zod，seed 會直接 import 其 TS 原始碼。
 - **接上審查引擎時，執行審查的 API 設計成非同步**（回 `202` 與執行識別，前端輪詢狀態），
   之後替換引擎或接 OCR 只換 runner 實作，不改 API 契約。本輪沒有這支 API。
-- **不引入 Redis / BullMQ / pgvector / OCR / LLM 相依套件。** Product Scope 明列
+- **不引入 Redis / BullMQ / pgvector / 傳統 OCR 相依套件。** Product Scope 明列
   Production 等級的 Pipeline、Observability、Retry、Auth/RBAC 不在範圍。
-- 擷取資料以 seed 的結構化資料為準，不做真實 OCR。
+
+### LLM 使用規則（目前選用 Gemini）
+
+LLM 負責「看懂」與「模糊判斷」，固定規則負責「計算」與「下結論」。
+
+- **只用在 Spec 定義的用途。** 目前只有 `specs/receipt-reading.md`（讀取憑證、擷取欄位）。
+  新用途先寫 Spec，不順手加。
+- **LLM 不決定審查建議、流程動作或自動執行。** 這些由 shared 的規則推導；LLM 的輸出
+  只能成為規則的輸入或附依據的說明文字。
+- **沒把握就說無法辨識，不猜。** 無法辨識的值不得以零、空白或推測值代替，
+  進入規則時一律成為「無法判斷」。
+- **輸出必須通過 schema 驗證。** 不合格式視為整次失敗，不採用部分結果。
+- **每次呼叫都可回放。** 保存模型與版本、prompt 版本、輸入識別（含檔案雜湊）、原始回應、
+  解析結果或失敗原因；紀錄只能新增。
+- **只在後端呼叫。** 金鑰放在後端環境變數，前端不得直接呼叫 LLM 服務；
+  供應商細節封裝在 api 的單一介面後面，換供應商不影響審查流程。
+- **只送模擬資料。** 不送真實個人、財務或企業資料。
+- 改 prompt 或換模型前，先用示範憑證的已知內容量測擷取準確度。
 
 ## 6. 資料庫
 
@@ -191,6 +208,8 @@ Bug Fix、Refactor、Chore、Spike 等非產品功能變更可以獨立處理，
 看到以下情況，停下來問，不要自己決定：
 
 - 想在 `apps/web` 或 `apps/api` 重新實作一份判定邏輯（應該用 `packages/shared`）
+- 想讓 LLM 直接給出審查建議、決定流程動作，或把 LLM 的說明當成判斷依據
+- 想在前端直接呼叫 LLM 服務
 - 想加新的 npm 套件
 - 想改 `schema.prisma` 或 migration
 - 想繞過 DB 約束（改成應用層驗證、或加 `-- @skip` 之類）

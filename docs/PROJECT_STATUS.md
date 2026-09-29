@@ -83,6 +83,9 @@ PM 已確認以 **CheckMate** 的 PRD 作為最新版本，Demo 也以此為主�
 
 依 Product Scope「Demo Day｜逐步補齊的目標能力」：
 
+0. **單據讀取與欄位擷取（Gemini）**：Spec 草案 `specs/receipt-reading.md`，**待 PM 確認**後實作。
+   LLM 讀取模擬憑證、擷取欄位，擷取金額接 E-01；本 Slice 不改變審查建議。
+
 1. **實際初審引擎**：在 🔴 的規則條件定案後，把四個面向寫成 shared 的純函式（E-01 已完成），
    新增非同步的執行審查 API，產生 `source = ENGINE` 的審查紀錄。預置資料可作為驗收案例。
 2. **補件回流**：待補件案件補齊後重新審查（本輪不支援）。
